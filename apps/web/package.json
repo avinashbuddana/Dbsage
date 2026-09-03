@@ -1,0 +1,26 @@
+{
+  "name": "@schemaiq/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm --filter @schemaiq/shared build",
+    "dev": "next dev --port ${WEB_PORT:-3000}",
+    "build": "next build --webpack",
+    "start": "next start --port ${WEB_PORT:-3000}",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@schemaiq/shared": "workspace:*",
+    "next": "^16.3.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  }
+}

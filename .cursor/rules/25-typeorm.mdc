@@ -1,0 +1,9 @@
+---
+description: Internal TypeORM boundaries
+globs: "apps/api/src/{database,users,organizations,audit}/**/*.ts"
+alwaysApply: false
+---
+
+# TypeORM
+
+TypeORM manages only the internal SchemaIQ PostgreSQL database. Never use it for dynamic customer connections. Use injected repositories, one Nest-managed runtime pool, `synchronize: false`, and reversible migrations. Do not edit migrations already deployed.

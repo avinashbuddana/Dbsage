@@ -1,0 +1,16 @@
+{
+  "extends": "../../packages/config/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@schemaiq/shared": ["../../packages/shared/src/index.ts"],
+      "@schemaiq/types": ["../../packages/types/src/index.ts"]
+    },
+    "outDir": "dist",
+    "types": ["node", "jest"],
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "jest.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

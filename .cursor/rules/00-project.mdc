@@ -1,0 +1,10 @@
+---
+description: SchemaIQ scope and architecture
+alwaysApply: true
+---
+
+# Project
+
+SchemaIQ is a pnpm modular monolith. The active scope is Milestone 0 foundation. Do not add customer connectors, analysis, LLM, SQL execution, queues, vector stores, or microservices unless explicitly requested.
+
+Read `AGENTS.md` and `docs/ARCHITECTURE.md` before changing architecture. Make small coherent changes and avoid speculative abstractions or dependencies.

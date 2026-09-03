@@ -1,0 +1,40 @@
+{
+  "name": "schemaiq",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SchemaIQ AI Database Intelligence platform",
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=10 <11"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @schemaiq/api --filter @schemaiq/web dev",
+    "dev:api": "pnpm --filter @schemaiq/api dev",
+    "dev:web": "pnpm --filter @schemaiq/web dev",
+    "build": "pnpm -r --if-present build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "test:coverage": "pnpm --filter @schemaiq/api test:coverage",
+    "migration:create": "pnpm --dir apps/api migration:create",
+    "migration:generate": "pnpm --dir apps/api migration:generate",
+    "migration:run": "pnpm --dir apps/api migration:run",
+    "migration:revert": "pnpm --dir apps/api migration:revert",
+    "migration:show": "pnpm --dir apps/api migration:show"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.3.0",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^16.3.4",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.69.0"
+  }
+}

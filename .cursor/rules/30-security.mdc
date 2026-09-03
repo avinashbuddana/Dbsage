@@ -1,0 +1,9 @@
+---
+description: Security and resource lifecycle
+globs: "apps/**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Security
+
+Validate trust boundaries and authorize future tenant resources on the backend. Never commit, log, return, or expose secrets, credentials, connection strings, stack traces, or SQL driver details. Bound process-local resources and close every long-lived connection on shutdown.

@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-schemaiq}
+      POSTGRES_USER: ${DATABASE_USER:-schemaiq}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-schemaiq-local-password}
+    ports:
+      - '${DATABASE_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--requirepass',
+        '${REDIS_PASSWORD:-schemaiq-local-password}',
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-schemaiq-local-password}
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mysql-test:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_TEST_DATABASE:-schemaiq_customer}
+      MYSQL_USER: ${MYSQL_TEST_USER:-schemaiq_reader}
+      MYSQL_PASSWORD: ${MYSQL_TEST_PASSWORD:-schemaiq-local-password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_TEST_ROOT_PASSWORD:-schemaiq-local-root-password}
+    ports:
+      - '${MYSQL_TEST_PORT:-3307}:3306'
+    volumes:
+      - mysql_test_data:/var/lib/mysql
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  mysql_test_data:

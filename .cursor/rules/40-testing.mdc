@@ -1,0 +1,9 @@
+---
+description: Focused test and completion rules
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Testing
+
+Write focused Jest tests for behavior, validation, and failure paths. Do not add assertions solely for coverage. Before completion run `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build`; report failures honestly.

@@ -1,0 +1,9 @@
+---
+description: Strict TypeScript rules
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# TypeScript
+
+Use strict TypeScript and preserve every strictness flag in `tsconfig.base.json`. Avoid `any`; narrow `unknown`, use explicit contracts, and keep application source in `.ts` or `.tsx` files. Do not disable lint rules or type checks to hide errors.

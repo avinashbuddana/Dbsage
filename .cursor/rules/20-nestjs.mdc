@@ -1,0 +1,9 @@
+---
+description: NestJS module conventions
+globs: "apps/api/**/*.ts"
+alwaysApply: false
+---
+
+# NestJS
+
+Use modules and dependency injection. Controllers handle HTTP concerns only; injectable services own application logic; repositories own persistence. Validate DTOs and return sanitized response contracts. Keep cross-cutting middleware and filters in `common/`.
