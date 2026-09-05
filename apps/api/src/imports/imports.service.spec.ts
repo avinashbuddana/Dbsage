@@ -283,9 +283,11 @@ describe('ImportsService', () => {
 
     await service.findAll(organizationId, 1, 20, undefined, 'customers');
 
-    const call = (repository.findAndCount as jest.Mock).mock.calls[0][0] as { where: { organizationId: string; originalFileName: { value: string } } };
-    expect(call.where.organizationId).toBe(organizationId);
-    expect(call.where.originalFileName.value).toContain('customers');
+    const [options] = repository.findAndCount.mock.calls[0] as [
+      { where: { organizationId: string; originalFileName: { value: string } } },
+    ];
+    expect(options.where.organizationId).toBe(organizationId);
+    expect(options.where.originalFileName.value).toContain('customers');
   });
 
   it('omits status/search from the where clause when not provided', async () => {
