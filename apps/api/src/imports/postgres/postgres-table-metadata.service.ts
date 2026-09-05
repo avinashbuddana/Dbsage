@@ -44,6 +44,8 @@ export const NEW_TABLE_COLUMN_TYPES: ReadonlySet<string> = new Set([
   'uuid',
 ]);
 
+const AUDIT_TIMESTAMP_TYPE = 'timestamptz';
+
 @Injectable()
 export class PostgresTableMetadataService {
   constructor(
@@ -165,20 +167,36 @@ export class PostgresTableMetadataService {
     const schemaId = this.identifiers.validateNewIdentifier(schema);
     const tableId = this.identifiers.validateNewIdentifier(table);
     const seen = new Set<string>();
+    const columnTypes = new Map<string, string>();
     const columnDefinitions = columns.map(({ name, type }) => {
       const columnId = this.identifiers.validateNewIdentifier(name);
       if (seen.has(columnId)) {
         throw new BadRequestException('Cannot create a table with duplicate column names');
       }
       seen.add(columnId);
+      columnTypes.set(columnId, type);
       if (!NEW_TABLE_COLUMN_TYPES.has(type)) {
         throw new BadRequestException('Import target column type is invalid');
       }
       return `"${columnId}" ${type}`;
     });
 
-    await this.postgres.withClient((client) =>
-      client.query(`CREATE TABLE "${schemaId}"."${tableId}" (${columnDefinitions.join(', ')})`),
-    );
+    if (!seen.has('created_at')) {
+      columnDefinitions.push(`"created_at" ${AUDIT_TIMESTAMP_TYPE} NOT NULL DEFAULT now()`);
+    }
+    const hasOwnUpdatedAt = seen.has('updated_at');
+    if (!hasOwnUpdatedAt) {
+      columnDefinitions.push(`"updated_at" ${AUDIT_TIMESTAMP_TYPE} NOT NULL DEFAULT now()`);
+    }
+    const attachUpdatedAtTrigger = !hasOwnUpdatedAt || columnTypes.get('updated_at') === AUDIT_TIMESTAMP_TYPE;
+
+    await this.postgres.withClient(async (client) => {
+      await client.query(`CREATE TABLE "${schemaId}"."${tableId}" (${columnDefinitions.join(', ')})`);
+      if (attachUpdatedAtTrigger) {
+        await client.query(
+          `CREATE TRIGGER "trg_${tableId}_set_updated_at" BEFORE UPDATE ON "${schemaId}"."${tableId}" FOR EACH ROW EXECUTE FUNCTION set_updated_at()`,
+        );
+      }
+    });
   }
 }

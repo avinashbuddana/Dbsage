@@ -76,7 +76,7 @@ describe('PostgresTableMetadataService', () => {
 
   it('creates a table with the requested column types after validating identifiers and policy', async () => {
     const { client, identifiers, policy, service } = setup();
-    client.query.mockResolvedValueOnce({ rows: [] });
+    client.query.mockResolvedValue({ rows: [] });
 
     await service.createTable('public', 'new_customers', [
       { name: 'name', type: 'text' },
@@ -89,7 +89,57 @@ describe('PostgresTableMetadataService', () => {
     expect(identifiers.validateNewIdentifier).toHaveBeenCalledWith('name');
     expect(identifiers.validateNewIdentifier).toHaveBeenCalledWith('created_at');
     expect(client.query).toHaveBeenCalledWith(
-      'CREATE TABLE "public"."new_customers" ("name" text, "created_at" timestamp)',
+      'CREATE TABLE "public"."new_customers" ("name" text, "created_at" timestamp, "updated_at" timestamptz NOT NULL DEFAULT now())',
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      'CREATE TRIGGER "trg_new_customers_set_updated_at" BEFORE UPDATE ON "public"."new_customers" FOR EACH ROW EXECUTE FUNCTION set_updated_at()',
+    );
+  });
+
+  it('auto-adds created_at and updated_at with an update trigger when neither is requested', async () => {
+    const { client, service } = setup();
+    client.query.mockResolvedValue({ rows: [] });
+
+    await service.createTable('public', 'new_customers', [{ name: 'name', type: 'text' }]);
+
+    expect(client.query).toHaveBeenCalledWith(
+      'CREATE TABLE "public"."new_customers" ("name" text, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now())',
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      'CREATE TRIGGER "trg_new_customers_set_updated_at" BEFORE UPDATE ON "public"."new_customers" FOR EACH ROW EXECUTE FUNCTION set_updated_at()',
+    );
+  });
+
+  it('does not duplicate created_at or updated_at when the caller already supplied both', async () => {
+    const { client, service } = setup();
+    client.query.mockResolvedValue({ rows: [] });
+
+    await service.createTable('public', 'new_customers', [
+      { name: 'name', type: 'text' },
+      { name: 'created_at', type: 'timestamptz' },
+      { name: 'updated_at', type: 'timestamptz' },
+    ]);
+
+    expect(client.query).toHaveBeenCalledWith(
+      'CREATE TABLE "public"."new_customers" ("name" text, "created_at" timestamptz, "updated_at" timestamptz)',
+    );
+    expect(client.query).toHaveBeenCalledWith(
+      'CREATE TRIGGER "trg_new_customers_set_updated_at" BEFORE UPDATE ON "public"."new_customers" FOR EACH ROW EXECUTE FUNCTION set_updated_at()',
+    );
+  });
+
+  it('skips the update trigger when the caller supplied a non-timestamptz updated_at column', async () => {
+    const { client, service } = setup();
+    client.query.mockResolvedValue({ rows: [] });
+
+    await service.createTable('public', 'new_customers', [
+      { name: 'name', type: 'text' },
+      { name: 'updated_at', type: 'text' },
+    ]);
+
+    expect(client.query).toHaveBeenCalledTimes(1);
+    expect(client.query).toHaveBeenCalledWith(
+      'CREATE TABLE "public"."new_customers" ("name" text, "updated_at" text, "created_at" timestamptz NOT NULL DEFAULT now())',
     );
   });
 

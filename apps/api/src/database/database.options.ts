@@ -15,6 +15,7 @@ import { InitialFoundation1725321600000 } from './migrations/1725321600000-initi
 import { SecureMysqlDatasources1788393600000 } from './migrations/1788393600000-secure-mysql-datasources';
 import { PostgreSqlCsvImports1788480000000 } from './migrations/1788480000000-postgresql-csv-imports';
 import { CsvImportDuplicateProtection1788500000000 } from './migrations/1788500000000-csv-import-duplicate-protection';
+import { CsvImportUpdatedAtTrigger1788510000000 } from './migrations/1788510000000-csv-import-updated-at-trigger';
 
 const entities = [
   UserEntity,
@@ -31,6 +32,7 @@ const migrations = [
   SecureMysqlDatasources1788393600000,
   PostgreSqlCsvImports1788480000000,
   CsvImportDuplicateProtection1788500000000,
+  CsvImportUpdatedAtTrigger1788510000000,
 ];
 
 interface InternalDatabaseConfig {
