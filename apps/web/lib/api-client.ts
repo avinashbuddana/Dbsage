@@ -11,17 +11,31 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
 
+export interface ApiErrorPreviousImport {
+  fileName: string;
+  importedAt: string;
+  totalRows: string | null;
+  successfulRows: string;
+  failedRows: string;
+}
+
 export interface ApiErrorPayload {
   statusCode: number;
   code: string;
   message: string;
   requestId: string;
+  existingImportId?: string;
+  fileHash?: string;
+  previousImport?: ApiErrorPreviousImport;
 }
 
 export class ApiError extends Error {
   readonly statusCode: number;
   readonly code: string;
   readonly requestId: string;
+  readonly existingImportId?: string;
+  readonly fileHash?: string;
+  readonly previousImport?: ApiErrorPreviousImport;
 
   constructor(payload: ApiErrorPayload) {
     super(payload.message);
@@ -29,6 +43,9 @@ export class ApiError extends Error {
     this.statusCode = payload.statusCode;
     this.code = payload.code;
     this.requestId = payload.requestId;
+    this.existingImportId = payload.existingImportId;
+    this.fileHash = payload.fileHash;
+    this.previousImport = payload.previousImport;
   }
 }
 
@@ -54,6 +71,7 @@ async function apiFetch<T>(path: string, options: RequestOptions): Promise<T> {
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       body: options.body,
+      cache: 'no-store',
       headers: { 'x-organization-id': options.organizationId, ...options.headers },
       method: options.method ?? 'GET',
       signal: options.signal,
@@ -75,7 +93,10 @@ async function apiFetch<T>(path: string, options: RequestOptions): Promise<T> {
     const errorPayload = payload as Partial<ApiErrorPayload> | null;
     throw new ApiError({
       code: errorPayload?.code ?? 'UNKNOWN_ERROR',
+      existingImportId: errorPayload?.existingImportId,
+      fileHash: errorPayload?.fileHash,
       message: errorPayload?.message ?? 'Something went wrong. Please try again.',
+      previousImport: errorPayload?.previousImport,
       requestId: errorPayload?.requestId ?? 'unknown',
       statusCode: errorPayload?.statusCode ?? response.status,
     });
@@ -106,6 +127,8 @@ export interface CreateImportInput {
   targetTable: string;
   delimiter: string;
   columnMapping?: Record<string, string>;
+  columnTypes?: Record<string, string>;
+  createTable?: boolean;
 }
 
 export interface CreateImportResult {
@@ -170,6 +193,8 @@ export const importsApi = {
     formData.set('targetTable', input.targetTable);
     formData.set('delimiter', input.delimiter);
     if (input.columnMapping) formData.set('columnMapping', JSON.stringify(input.columnMapping));
+    if (input.columnTypes) formData.set('columnTypes', JSON.stringify(input.columnTypes));
+    if (input.createTable) formData.set('createTable', 'true');
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -203,7 +228,10 @@ export const importsApi = {
         reject(
           new ApiError({
             code: errorPayload?.code ?? 'UNKNOWN_ERROR',
+            existingImportId: errorPayload?.existingImportId,
+            fileHash: errorPayload?.fileHash,
             message: errorPayload?.message ?? 'The upload could not be completed.',
+            previousImport: errorPayload?.previousImport,
             requestId: errorPayload?.requestId ?? 'unknown',
             statusCode: errorPayload?.statusCode ?? xhr.status,
           }),

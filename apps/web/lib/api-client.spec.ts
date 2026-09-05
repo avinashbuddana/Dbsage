@@ -48,6 +48,38 @@ describe('importsApi', () => {
     await expect(importsApi.get('org-1', 'missing')).rejects.toMatchObject({ code: 'IMPORT_NOT_FOUND', requestId: 'req-1' });
   });
 
+  it('carries duplicate-import details through to the thrown ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          {
+            code: 'DUPLICATE_IMPORT',
+            existingImportId: 'import-1',
+            fileHash: 'abc123',
+            message: 'This file has already been imported into public.customers.',
+            previousImport: {
+              failedRows: '20',
+              fileName: 'customers.csv',
+              importedAt: '2026-09-05T10:30:00Z',
+              successfulRows: '14980',
+              totalRows: '15000',
+            },
+            requestId: 'req-1',
+            statusCode: 409,
+          },
+          409,
+        ),
+      ),
+    );
+
+    await expect(importsApi.get('org-1', 'import-1')).rejects.toMatchObject({
+      code: 'DUPLICATE_IMPORT',
+      existingImportId: 'import-1',
+      previousImport: { fileName: 'customers.csv', successfulRows: '14980' },
+    });
+  });
+
   it('wraps a network failure in a friendly ApiError', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 
@@ -73,6 +105,7 @@ class FakeXhr {
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
   requestHeaders: Record<string, string> = {};
+  sentBody: FormData | undefined;
 
   constructor() {
     FakeXhr.instances.push(this);
@@ -84,8 +117,9 @@ class FakeXhr {
   setRequestHeader(name: string, value: string): void {
     this.requestHeaders[name] = value;
   }
-  send(): void {
-    // triggered manually by the test once it drives onprogress/onload
+  send(body?: FormData): void {
+    this.sentBody = body;
+    // response is triggered manually by the test once it drives onprogress/onload
   }
 }
 
@@ -117,6 +151,43 @@ describe('importsApi.uploadCsv', () => {
     expect(onProgress).toHaveBeenCalledWith(50);
     expect(result.status).toBe(202);
     expect(result.data).toMatchObject({ id: 'import-1', status: 'QUEUED' });
+  });
+
+  it('includes createTable in the upload only when requested', () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr);
+    const file = new File(['name\nAda'], 'customers.csv', { type: 'text/csv' });
+
+    void importsApi.uploadCsv('org-1', { createTable: true, delimiter: ',', file, targetSchema: 'public', targetTable: 'new_customers' });
+    const [xhr] = FakeXhr.instances;
+    if (!xhr) throw new Error('Expected an XHR instance to have been constructed');
+    expect(xhr.sentBody?.get('createTable')).toBe('true');
+  });
+
+  it('omits createTable from the upload when not requested', () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr);
+    const file = new File(['name\nAda'], 'customers.csv', { type: 'text/csv' });
+
+    void importsApi.uploadCsv('org-1', { delimiter: ',', file, targetSchema: 'public', targetTable: 'customers' });
+    const [xhr] = FakeXhr.instances;
+    if (!xhr) throw new Error('Expected an XHR instance to have been constructed');
+    expect(xhr.sentBody?.get('createTable')).toBeNull();
+  });
+
+  it('includes columnTypes in the upload only when provided', () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXhr);
+    const file = new File(['name\nAda'], 'customers.csv', { type: 'text/csv' });
+
+    void importsApi.uploadCsv('org-1', {
+      columnTypes: { created_at: 'timestamp' },
+      createTable: true,
+      delimiter: ',',
+      file,
+      targetSchema: 'public',
+      targetTable: 'new_customers',
+    });
+    const [xhr] = FakeXhr.instances;
+    if (!xhr) throw new Error('Expected an XHR instance to have been constructed');
+    expect(xhr.sentBody?.get('columnTypes')).toBe('{"created_at":"timestamp"}');
   });
 
   it('rejects with an ApiError when the upload fails', async () => {

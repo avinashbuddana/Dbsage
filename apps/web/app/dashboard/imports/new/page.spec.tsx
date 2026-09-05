@@ -35,9 +35,11 @@ vi.mock('../../../../components/imports/destination-step', () => ({
   DestinationStep: ({
     onSchemaChange,
     onTableChange,
+    onCreateTableChange,
   }: {
     onSchemaChange: (schema: string) => void;
     onTableChange: (table: string) => void;
+    onCreateTableChange?: (createTable: boolean) => void;
   }) => (
     <div>
       <button
@@ -54,11 +56,22 @@ vi.mock('../../../../components/imports/destination-step', () => ({
       >
         mock-select-table
       </button>
+      <button
+        onClick={() => {
+          onCreateTableChange?.(true);
+          onTableChange('new_customers');
+        }}
+      >
+        mock-create-new-table
+      </button>
     </div>
   ),
 }));
 vi.mock('../../../../components/imports/column-mapping-table', () => ({
   ColumnMappingTable: () => <div>mock-mapping-table</div>,
+}));
+vi.mock('../../../../components/imports/new-table-columns-table', () => ({
+  NewTableColumnsTable: () => <div>mock-new-table-columns</div>,
 }));
 vi.mock('../../../../components/imports/import-summary', () => ({
   ImportSummary: ({ onStart }: { onStart: () => void }) => <button onClick={onStart}>mock-start-import</button>,
@@ -136,6 +149,30 @@ describe('NewImportPage', () => {
     });
   });
 
+  it('starts an import that creates a new table from the CSV header', async () => {
+    mutateAsync.mockResolvedValue({ data: { id: 'import-456' }, status: 201 });
+    const user = userEvent.setup();
+    render(<NewImportPage />);
+
+    await uploadMockFileAndWait(user);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByText('mock-select-schema'));
+    await user.click(screen.getByText('mock-create-new-table'));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByText('mock-start-import'));
+
+    const call = mutateAsync.mock.calls[0]?.[0] as {
+      input: { columnMapping: Record<string, string>; createTable: boolean; targetSchema: string; targetTable: string };
+    };
+    expect(call.input.createTable).toBe(true);
+    expect(call.input.targetTable).toBe('new_customers');
+    expect(call.input.columnMapping).toEqual({ email: 'email', last_name: 'last_name' });
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith('/dashboard/imports/import-456');
+    });
+  });
+
   it('shows a friendly error and does not navigate when starting the import fails', async () => {
     mutateAsync.mockRejectedValue(new Error('SchemaIQ could not reach the server. Check your connection and try again.'));
     const user = userEvent.setup();
@@ -151,6 +188,44 @@ describe('NewImportPage', () => {
 
     await screen.findByText("We couldn't start the import");
     expect(screen.getByText(/SchemaIQ could not reach the server/)).toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the duplicate-import details and a link to the existing import when the upload is rejected as a duplicate', async () => {
+    const { ApiError } = await import('../../../../lib/api-client');
+    mutateAsync.mockRejectedValue(
+      new ApiError({
+        code: 'DUPLICATE_IMPORT',
+        existingImportId: 'import-999',
+        message: 'This file has already been imported into public.customers.',
+        previousImport: {
+          failedRows: '20',
+          fileName: 'customers.csv',
+          importedAt: '2026-09-05T10:30:00Z',
+          successfulRows: '14980',
+          totalRows: '15000',
+        },
+        requestId: 'req-1',
+        statusCode: 409,
+      }),
+    );
+    const user = userEvent.setup();
+    render(<NewImportPage />);
+
+    await uploadMockFileAndWait(user);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByText('mock-select-schema'));
+    await user.click(screen.getByText('mock-select-table'));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByText('mock-start-import'));
+
+    await screen.findByText('File Already Imported');
+    expect(screen.getByText(/14,980 rows/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View existing import' })).toHaveAttribute(
+      'href',
+      '/dashboard/imports/import-999',
+    );
     expect(pushMock).not.toHaveBeenCalled();
   });
 });
