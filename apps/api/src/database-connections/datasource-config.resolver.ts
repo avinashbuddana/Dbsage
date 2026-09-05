@@ -42,7 +42,7 @@ export class DatasourceConfigResolver {
 
     const host =
       datasource.connectionMode === DatasourceConnectionMode.Direct
-        ? await this.networkPolicy.validateTarget(datasource.host, datasource.connectionMode)
+        ? await this.networkPolicy.validateTarget(datasource.host)
         : this.networkPolicy.validateRemoteTarget(datasource.host);
     const config: CustomerDatabaseConnectionConfig = {
       datasourceId,
@@ -69,10 +69,7 @@ export class DatasourceConfigResolver {
   ): Promise<NonNullable<CustomerDatabaseConnectionConfig['ssh']>> {
     const ssh = await this.sshRepository.findOne({ where: { datasourceId } });
     if (!ssh) throw this.unavailable();
-    const host = await this.networkPolicy.validateTarget(
-      ssh.sshHost,
-      DatasourceConnectionMode.SshTunnel,
-    );
+    const host = await this.networkPolicy.validateTarget(ssh.sshHost);
     if (ssh.authenticationType === SshAuthenticationType.Password) {
       const password = secrets[DatasourceSecretType.SshPassword];
       if (!password) throw this.unavailable();

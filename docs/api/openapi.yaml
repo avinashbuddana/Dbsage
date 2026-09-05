@@ -1,0 +1,442 @@
+openapi: 3.1.0
+info:
+  title: SchemaIQ CSV Import API
+  version: 0.1.0
+  description: |
+    Backend API for streamed PostgreSQL CSV bulk imports. An upload is validated against
+    PostgreSQL metadata and loaded atomically with COPY FROM STDIN. Uploads never place
+    CSV contents or database credentials in JSON or the job queue.
+servers:
+  - url: http://localhost:3001/api/v1
+    description: Local development
+tags:
+  - name: Imports
+    description: CSV upload, import status, retry, cancellation, and history.
+security:
+  - developmentOrganization: []
+paths:
+  /imports/csv:
+    post:
+      tags: [Imports]
+      summary: Upload and start a CSV import
+      description: |
+        Streams one CSV file to protected temporary storage, validates its header and
+        target mapping, then either performs COPY in the request or queues one bounded job.
+        `201` is synchronous completion (including a persisted failed import); `202` is queued.
+      operationId: createCsvImport
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, targetSchema, targetTable]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: A single CSV file. The configured maximum is 1 GiB by default.
+                targetSchema:
+                  type: string
+                  minLength: 1
+                  maxLength: 63
+                  example: public
+                targetTable:
+                  type: string
+                  minLength: 1
+                  maxLength: 63
+                  example: customer_records
+                delimiter:
+                  type: string
+                  minLength: 1
+                  maxLength: 1
+                  default: ','
+                  example: ','
+                  description: Must be in the server-configured delimiter allowlist.
+                columnMapping:
+                  type: string
+                  maxLength: 16384
+                  description: JSON object mapping CSV headers to validated target column names.
+                  example: '{"full_name":"name","email_address":"email"}'
+      responses:
+        '201':
+          description: Synchronous import reached a terminal state.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImport'
+        '202':
+          description: Large import accepted and queued for bounded background processing.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImport'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '413':
+          $ref: '#/components/responses/PayloadTooLargeError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+  /imports:
+    get:
+      tags: [Imports]
+      summary: List import history for the organization
+      operationId: listImports
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Paginated organization-scoped import history.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImportList'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+  /imports/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ImportId'
+    get:
+      tags: [Imports]
+      summary: Get one import's status and safe progress details
+      operationId: getImport
+      responses:
+        '200':
+          description: Organization-scoped import record.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+    delete:
+      tags: [Imports]
+      summary: Delete terminal import history and its retained source file
+      description: Only `COMPLETED`, `FAILED`, or `CANCELLED` imports may be deleted.
+      operationId: deleteImport
+      responses:
+        '204':
+          description: Import history deleted.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+  /imports/{id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/ImportId'
+    post:
+      tags: [Imports]
+      summary: Retry a failed import with its retained source file
+      description: Only a `FAILED` import with a retained file can be retried. The retry is queued.
+      operationId: retryImport
+      responses:
+        '201':
+          description: Retry queued or already claimed by a worker.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+  /imports/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ImportId'
+    post:
+      tags: [Imports]
+      summary: Cancel a queued import
+      description: Cancellation is available only before a worker claims the import.
+      operationId: cancelImport
+      responses:
+        '201':
+          description: Queued import cancelled.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataImport'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          $ref: '#/components/responses/ConflictError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+components:
+  securitySchemes:
+    developmentOrganization:
+      type: apiKey
+      in: header
+      name: x-organization-id
+      description: Development-only organization context. Production authentication is not implemented.
+  parameters:
+    ImportId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Import ID scoped to the requesting organization.
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  headers:
+    RequestId:
+      description: Server-generated or accepted request correlation ID.
+      schema:
+        type: string
+        format: uuid
+  responses:
+    ValidationError:
+      description: Invalid multipart metadata, request input, CSV content, target, or query parameter.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnauthorizedError:
+      description: Missing/invalid development organization context or production authentication unavailable.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFoundError:
+      description: No import with this ID exists in the requesting organization, or a retry source expired.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ConflictError:
+      description: The requested status transition is not legal.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLargeError:
+      description: Upload exceeds the configured maximum file size.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimitError:
+      description: Request rate limit exceeded.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailableError:
+      description: Import queue unavailable or at capacity.
+      headers:
+        x-request-id:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    DataImport:
+      type: object
+      required:
+        - id
+        - originalFileName
+        - fileSizeBytes
+        - mimeType
+        - targetSchema
+        - targetTable
+        - status
+        - processingMode
+        - delimiter
+        - hasHeader
+        - processedRows
+        - successfulRows
+        - failedRows
+        - processedBytes
+        - progressPercent
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        originalFileName:
+          type: string
+          maxLength: 255
+          description: Source filename metadata only; never a server filesystem path.
+        fileSizeBytes:
+          type: string
+          pattern: '^[0-9]+$'
+          description: Bigint serialized as a decimal string.
+        mimeType:
+          type: string
+          enum: [application/csv, text/csv, text/plain]
+        targetSchema:
+          type: string
+        targetTable:
+          type: string
+        status:
+          type: string
+          enum: [UPLOADED, VALIDATING, QUEUED, PROCESSING, COMPLETED, FAILED, CANCELLED]
+        processingMode:
+          type: string
+          enum: [SYNCHRONOUS, QUEUED]
+        delimiter:
+          type: string
+          minLength: 1
+          maxLength: 1
+        hasHeader:
+          type: boolean
+          const: true
+        totalRows:
+          type: [string, 'null']
+          pattern: '^[0-9]+$'
+        processedRows:
+          type: string
+          pattern: '^[0-9]+$'
+        successfulRows:
+          type: string
+          pattern: '^[0-9]+$'
+        failedRows:
+          type: string
+          pattern: '^[0-9]+$'
+        processedBytes:
+          type: string
+          pattern: '^[0-9]+$'
+        progressPercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+        errorCode:
+          type: [string, 'null']
+          enum:
+            - CSV_FILE_TOO_LARGE
+            - CSV_HEADER_INVALID
+            - CSV_INVALID_FORMAT
+            - CSV_COLUMN_MAPPING_INVALID
+            - IMPORT_COPY_FAILED
+            - IMPORT_FILE_NOT_FOUND
+            - IMPORT_POSTGRES_TYPE_ERROR
+            - IMPORT_CONSTRAINT_VIOLATION
+            - IMPORT_DUPLICATE_VALUE
+            - IMPORT_FOREIGN_KEY_VIOLATION
+            - IMPORT_TARGET_NOT_ALLOWED
+            - IMPORT_TIMEOUT
+            - IMPORT_INTERNAL_ERROR
+            - null
+        errorMessage:
+          type: [string, 'null']
+          maxLength: 500
+          description: Stable, sanitized import failure summary.
+        startedAt:
+          type: [string, 'null']
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DataImportList:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataImport'
+        total:
+          type: integer
+          minimum: 0
+    ErrorResponse:
+      type: object
+      required: [statusCode, code, message, requestId]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: Invalid request
+        requestId:
+          type: string
+          format: uuid

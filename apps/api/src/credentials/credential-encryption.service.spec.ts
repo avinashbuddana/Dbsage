@@ -12,10 +12,13 @@ describe('CredentialEncryptionService', () => {
     expect(encrypted.version).toBe(1);
   });
 
-  it('uses a unique IV for every encryption', () => {
+  it('uses a unique IV for every encryption, producing different ciphertext', () => {
     const service = new CredentialEncryptionService(key);
+    const first = service.encrypt('same');
+    const second = service.encrypt('same');
 
-    expect(service.encrypt('same').iv).not.toBe(service.encrypt('same').iv);
+    expect(first.iv).not.toBe(second.iv);
+    expect(first.ciphertext).not.toBe(second.ciphertext);
   });
 
   it.each(['ciphertext', 'authTag'] as const)('rejects a tampered %s', (field) => {

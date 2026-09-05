@@ -1,15 +1,16 @@
 import { Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
+import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 import type { DataSource } from 'typeorm';
 
-import type { AppConfigService } from '../config/app-config.service';
-import type { DatabaseConnectorFactory } from '../database-connectors/database-connector.factory';
+import { AppConfigService } from '../config/app-config.service';
+import { DatabaseConnectorFactory } from '../database-connectors/database-connector.factory';
 import type { DatabaseConnector } from '../database-connectors/database-connector.interface';
 import type { CustomerDatabaseConnectionConfig } from '../database-connectors/database-connector.types';
 import { DatasourceConnectionMode, DatasourceStatus } from '../datasources/enums/datasource.enums';
 import type { SshTunnelHandle } from '../ssh/ssh-tunnel.types';
-import type { SshTunnelService } from '../ssh/ssh-tunnel.service';
+import { SshTunnelService } from '../ssh/ssh-tunnel.service';
 import { DatasourceConnectionError } from './datasource-connection.error';
-import type { DatasourceConfigResolver } from './datasource-config.resolver';
+import { DatasourceConfigResolver } from './datasource-config.resolver';
 
 interface ConnectionEntry {
   organizationId: string;
@@ -34,6 +35,7 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
     private readonly resolver: DatasourceConfigResolver,
     private readonly config: AppConfigService,
     private readonly sshTunnelService: SshTunnelService,
+    @InjectPinoLogger(DatabaseConnectionManager.name) private readonly logger: PinoLogger,
   ) {}
 
   onModuleInit(): void {
@@ -45,6 +47,32 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
   }
 
   async getOrCreateDataSource(organizationId: string, datasourceId: string): Promise<DataSource> {
+    const entry = await this.acquire(organizationId, datasourceId);
+    entry.activeOperations -= 1;
+    return entry.dataSource;
+  }
+
+  async withDataSource<T>(
+    organizationId: string,
+    datasourceId: string,
+    operation: (dataSource: DataSource) => Promise<T>,
+  ): Promise<T> {
+    const entry = await this.acquire(organizationId, datasourceId);
+    try {
+      return await operation(entry.dataSource);
+    } finally {
+      entry.activeOperations -= 1;
+      entry.lastUsedAt = Date.now();
+    }
+  }
+
+  /**
+   * Resolves the registry entry for a datasource and leases it (increments
+   * activeOperations) in the same synchronous step the entry is obtained,
+   * so a concurrent eviction can never observe a momentarily-unleased entry
+   * that is actually about to be used.
+   */
+  private async acquire(organizationId: string, datasourceId: string): Promise<ConnectionEntry> {
     if (!this.accepting || this.blocked.has(datasourceId)) {
       throw new DatasourceConnectionError(
         'DATASOURCE_CONNECTION_FAILED',
@@ -57,18 +85,20 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
       if (existing.organizationId !== organizationId) throw this.unavailable();
       if (existing.tunnel && !existing.tunnel.isHealthy()) {
         this.registry.delete(datasourceId);
-        await this.closeEntry(existing);
-        return this.getOrCreateDataSource(organizationId, datasourceId);
+        return this.refresh(organizationId, datasourceId, existing);
       }
+      existing.activeOperations += 1;
       existing.lastUsedAt = Date.now();
-      return existing.dataSource;
+      return existing;
     }
 
     const pending = this.inFlight.get(datasourceId);
     if (pending) {
       const entry = await pending;
       if (entry.organizationId !== organizationId) throw this.unavailable();
-      return entry.dataSource;
+      entry.activeOperations += 1;
+      entry.lastUsedAt = Date.now();
+      return entry;
     }
 
     const initialization = Promise.resolve().then(() =>
@@ -76,26 +106,33 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
     );
     this.inFlight.set(datasourceId, initialization);
     try {
-      return (await initialization).dataSource;
+      const entry = await initialization;
+      entry.activeOperations += 1;
+      return entry;
     } finally {
       this.inFlight.delete(datasourceId);
     }
   }
 
-  async withDataSource<T>(
+  /** Closes a stale entry and reinitializes it, keeping an in-flight marker for the whole
+   *  operation so concurrent callers for the same datasourceId await the same refresh
+   *  instead of each starting their own DataSource. */
+  private async refresh(
     organizationId: string,
     datasourceId: string,
-    operation: (dataSource: DataSource) => Promise<T>,
-  ): Promise<T> {
-    const dataSource = await this.getOrCreateDataSource(organizationId, datasourceId);
-    const entry = this.registry.get(datasourceId);
-    if (!entry || entry.dataSource !== dataSource) throw this.unavailable();
-    entry.activeOperations += 1;
+    stale: ConnectionEntry,
+  ): Promise<ConnectionEntry> {
+    const refreshing = (async () => {
+      await this.closeEntry(stale);
+      return this.initialize(organizationId, datasourceId);
+    })();
+    this.inFlight.set(datasourceId, refreshing);
     try {
-      return await operation(dataSource);
+      const entry = await refreshing;
+      entry.activeOperations += 1;
+      return entry;
     } finally {
-      entry.activeOperations -= 1;
-      entry.lastUsedAt = Date.now();
+      this.inFlight.delete(datasourceId);
     }
   }
 
@@ -172,11 +209,11 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
   }
 
   private async initialize(organizationId: string, datasourceId: string): Promise<ConnectionEntry> {
-    await this.ensureCapacity(datasourceId);
     const config = await this.resolver.resolve(organizationId, datasourceId);
     if (config.status === DatasourceStatus.Disabled) {
       throw new DatasourceConnectionError('DATASOURCE_DISABLED', 'Datasource is disabled');
     }
+    await this.ensureCapacity(datasourceId);
     const connector = this.connectorFactory.get(config.type);
     let tunnel: SshTunnelHandle | undefined;
     try {
@@ -237,6 +274,12 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
     const deadline = Date.now() + this.config.mysql.connectTimeoutMs;
     while (entry.activeOperations > 0 && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (entry.activeOperations > 0) {
+      this.logger.warn(
+        { activeOperations: entry.activeOperations },
+        'Closing a customer datasource connection with active operations still in flight',
+      );
     }
   }
 

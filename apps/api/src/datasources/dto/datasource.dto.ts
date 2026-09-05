@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   Length,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -22,9 +23,16 @@ import {
   SshAuthenticationType,
 } from '../enums/datasource.enums';
 
+// A bare hostname or IPv4/IPv6 literal only — rejects URL schemes (http://, mysql://),
+// filesystem paths, and shell metacharacters at the DTO boundary, ahead of DNS resolution.
+// The leading ':' is required for compressed IPv6 literals such as '::1' or '::ffff:10.0.0.1'.
+const HOST_PATTERN = /^[A-Za-z0-9:][A-Za-z0-9.:-]*$/;
+const HOST_VALIDATION_MESSAGE = 'host must be a hostname or IP address, not a URL or path';
+
 export class SshConnectionDto {
   @IsString()
   @Length(1, 253)
+  @Matches(HOST_PATTERN, { message: HOST_VALIDATION_MESSAGE })
   host!: string;
 
   @Type(() => Number)
@@ -69,6 +77,7 @@ export class TestDatasourceConnectionDto {
 
   @IsString()
   @Length(1, 253)
+  @Matches(HOST_PATTERN, { message: HOST_VALIDATION_MESSAGE })
   host!: string;
 
   @Type(() => Number)
@@ -118,6 +127,7 @@ export class UpdateDatasourceDto {
   @IsOptional()
   @IsString()
   @Length(1, 253)
+  @Matches(HOST_PATTERN, { message: HOST_VALIDATION_MESSAGE })
   host?: string;
 
   @IsOptional()

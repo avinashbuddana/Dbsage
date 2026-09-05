@@ -10,6 +10,7 @@ import { ConfigurationModule } from './config/configuration.module';
 import { DatabaseModule } from './database/database.module';
 import { DatasourcesModule } from './datasources/datasources.module';
 import { HealthModule } from './health/health.module';
+import { ImportsModule } from './imports/imports.module';
 import { LoggingModule } from './logging/logging.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { RedisModule } from './redis/redis.module';
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuditModule,
     DatasourcesModule,
+    ImportsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

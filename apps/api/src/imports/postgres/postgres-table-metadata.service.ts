@@ -1,6 +1,7 @@
-import { NotFoundException, Injectable } from '@nestjs/common';
+import { BadRequestException, NotFoundException, Injectable } from '@nestjs/common';
 
 import { BulkImportPostgresProvider } from './bulk-import-postgres.provider';
+import { PostgresIdentifierService } from './postgres-identifier.service';
 import type { PostgresColumnMetadata, PostgresTableMetadata } from './postgres-import.types';
 import { PostgresImportTargetPolicyService } from './postgres-import-target-policy.service';
 
@@ -26,11 +27,29 @@ interface TableRow {
   column_count: number;
 }
 
+export interface NewTableColumn {
+  name: string;
+  type: string;
+}
+
+export const NEW_TABLE_COLUMN_TYPES: ReadonlySet<string> = new Set([
+  'text',
+  'integer',
+  'bigint',
+  'numeric',
+  'boolean',
+  'date',
+  'timestamp',
+  'timestamptz',
+  'uuid',
+]);
+
 @Injectable()
 export class PostgresTableMetadataService {
   constructor(
     private readonly postgres: BulkImportPostgresProvider,
     private readonly policy: PostgresImportTargetPolicyService,
+    private readonly identifiers: PostgresIdentifierService,
   ) {}
 
   async listSchemas(): Promise<string[]> {
@@ -118,5 +137,48 @@ export class PostgresTableMetadataService {
         })),
       };
     });
+  }
+
+  async tableExists(schema: string, table: string): Promise<boolean> {
+    return this.postgres.withClient(async (client) => {
+      const result = await client.query<ExistsRow>(
+        `SELECT EXISTS (
+          SELECT 1
+          FROM pg_class relation
+          INNER JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+          WHERE namespace.nspname = $1
+            AND relation.relname = $2
+            AND relation.relkind IN ('r', 'p')
+        ) AS exists`,
+        [schema, table],
+      );
+      return result.rows[0]?.exists ?? false;
+    });
+  }
+
+  async createTable(schema: string, table: string, columns: readonly NewTableColumn[]): Promise<void> {
+    this.policy.assertAllowed(schema, table);
+    if (columns.length === 0) {
+      throw new BadRequestException('Cannot create a table with no columns');
+    }
+
+    const schemaId = this.identifiers.validateNewIdentifier(schema);
+    const tableId = this.identifiers.validateNewIdentifier(table);
+    const seen = new Set<string>();
+    const columnDefinitions = columns.map(({ name, type }) => {
+      const columnId = this.identifiers.validateNewIdentifier(name);
+      if (seen.has(columnId)) {
+        throw new BadRequestException('Cannot create a table with duplicate column names');
+      }
+      seen.add(columnId);
+      if (!NEW_TABLE_COLUMN_TYPES.has(type)) {
+        throw new BadRequestException('Import target column type is invalid');
+      }
+      return `"${columnId}" ${type}`;
+    });
+
+    await this.postgres.withClient((client) =>
+      client.query(`CREATE TABLE "${schemaId}"."${tableId}" (${columnDefinitions.join(', ')})`),
+    );
   }
 }

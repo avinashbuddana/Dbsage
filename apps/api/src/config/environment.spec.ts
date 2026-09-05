@@ -37,6 +37,24 @@ describe('validateEnvironment', () => {
     expect(environment.ALLOW_LOCAL_DATASOURCES).toBe(false);
   });
 
+  it('provides bounded CSV import defaults', () => {
+    const environment = validateEnvironment(validEnvironment);
+
+    expect(environment.CSV_IMPORT_MAX_FILE_SIZE_BYTES).toBeGreaterThan(
+      environment.CSV_IMPORT_QUEUE_THRESHOLD_BYTES,
+    );
+    expect(environment.CSV_IMPORT_WORKER_CONCURRENCY).toBeGreaterThan(0);
+  });
+
+  it('rejects COPY-unsafe CSV delimiters', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        CSV_IMPORT_ALLOWED_DELIMITERS: ",;'",
+      }),
+    ).toThrow('CSV_IMPORT_ALLOWED_DELIMITERS');
+  });
+
   it('fails fast when required secrets are absent', () => {
     const withoutJwtSecret: Record<string, unknown> = { ...validEnvironment };
     delete withoutJwtSecret.JWT_SECRET;
@@ -50,6 +68,16 @@ describe('validateEnvironment', () => {
         ...validEnvironment,
         NODE_ENV: 'production',
         CORS_ORIGIN: '*',
+      }),
+    ).toThrow('Invalid environment');
+  });
+
+  it('rejects local datasource targets in production', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'production',
+        ALLOW_LOCAL_DATASOURCES: 'true',
       }),
     ).toThrow('Invalid environment');
   });

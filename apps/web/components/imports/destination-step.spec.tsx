@@ -56,4 +56,56 @@ describe('DestinationStep', () => {
     expect(screen.getByText('3')).toBeInTheDocument();
     expect(screen.getByText('1')).toBeInTheDocument();
   });
+
+  it('switches to a new-table-name input and reports the mode change', async () => {
+    const onCreateTableChange = vi.fn();
+    const onTableChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <DestinationStep
+        schema="public"
+        table={null}
+        createTable={false}
+        onSchemaChange={vi.fn()}
+        onTableChange={onTableChange}
+        onCreateTableChange={onCreateTableChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Create new table' }));
+
+    expect(onCreateTableChange).toHaveBeenCalledWith(true);
+    expect(onTableChange).toHaveBeenCalledWith(null);
+  });
+
+  it('shows a name input instead of the table select when creating a new table', () => {
+    render(
+      <DestinationStep
+        schema="public"
+        table={null}
+        createTable
+        onSchemaChange={vi.fn()}
+        onTableChange={vi.fn()}
+        onCreateTableChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('New table name')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Table')).not.toBeInTheDocument();
+  });
+
+  it('warns when the new table name is not a safe identifier', () => {
+    render(
+      <DestinationStep
+        schema="public"
+        table="bad name"
+        createTable
+        onSchemaChange={vi.fn()}
+        onTableChange={vi.fn()}
+        onCreateTableChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Use only letters, numbers, and underscores/)).toBeInTheDocument();
+  });
 });

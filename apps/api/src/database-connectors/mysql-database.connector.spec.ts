@@ -76,16 +76,22 @@ describe('MySqlDatabaseConnector', () => {
     ['ER_ACCESS_DENIED_ERROR', 'DATASOURCE_AUTHENTICATION_FAILED'],
     ['ECONNREFUSED', 'DATASOURCE_CONNECTION_REFUSED'],
     ['ETIMEDOUT', 'DATASOURCE_TIMEOUT'],
+    ['PROTOCOL_SEQUENCE_TIMEOUT', 'DATASOURCE_TIMEOUT'],
     ['ER_BAD_DB_ERROR', 'DATASOURCE_DATABASE_NOT_FOUND'],
+    ['HANDSHAKE_SSL_ERROR', 'DATASOURCE_TLS_ERROR'],
+    ['ERR_TLS_CERT_ALTNAME_INVALID', 'DATASOURCE_TLS_ERROR'],
+    ['DEPTH_ZERO_SELF_SIGNED_CERT', 'DATASOURCE_TLS_ERROR'],
+    ['SOMETHING_UNMAPPED', 'DATASOURCE_CONNECTION_FAILED'],
   ])('normalizes %s without exposing driver errors', async (driverCode, safeCode) => {
     const connector = new MySqlDatabaseConnector(appConfig);
     jest.spyOn(connector, 'createDataSource').mockRejectedValue(
       Object.assign(new Error('driver details and host'), { code: driverCode }),
     );
 
-    await expect(connector.testConnection(config)).rejects.toMatchObject({
+    const expected: Record<string, unknown> = {
       code: safeCode,
-      message: expect.not.stringContaining('driver details'),
-    });
+      message: expect.not.stringContaining('driver details') as unknown,
+    };
+    await expect(connector.testConnection(config)).rejects.toMatchObject(expected);
   });
 });

@@ -13,6 +13,13 @@ export enum AuditEvent {
   DatasourceConnectionTestSucceeded = 'DATASOURCE_CONNECTION_TEST_SUCCEEDED',
   DatasourceConnectionTestFailed = 'DATASOURCE_CONNECTION_TEST_FAILED',
   DatasourceCredentialUpdated = 'DATASOURCE_CREDENTIAL_UPDATED',
+  CsvImportUploaded = 'CSV_IMPORT_UPLOADED',
+  CsvImportQueued = 'CSV_IMPORT_QUEUED',
+  CsvImportStarted = 'CSV_IMPORT_STARTED',
+  CsvImportCompleted = 'CSV_IMPORT_COMPLETED',
+  CsvImportFailed = 'CSV_IMPORT_FAILED',
+  CsvImportCancelled = 'CSV_IMPORT_CANCELLED',
+  CsvImportRetried = 'CSV_IMPORT_RETRIED',
 }
 
 @Injectable()

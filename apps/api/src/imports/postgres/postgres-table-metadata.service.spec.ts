@@ -1,6 +1,7 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 import type { BulkImportPostgresProvider } from './bulk-import-postgres.provider';
+import type { PostgresIdentifierService } from './postgres-identifier.service';
 import type { PostgresImportTargetPolicyService } from './postgres-import-target-policy.service';
 import { PostgresTableMetadataService } from './postgres-table-metadata.service';
 
@@ -11,11 +12,13 @@ describe('PostgresTableMetadataService', () => {
       withClient: jest.fn(async (work: (candidate: typeof client) => Promise<unknown>) => work(client)),
     };
     const policy = { assertAllowed: jest.fn() };
+    const identifiers = { validateNewIdentifier: jest.fn((value: string) => value) };
     const service = new PostgresTableMetadataService(
       postgres as unknown as BulkImportPostgresProvider,
       policy as unknown as PostgresImportTargetPolicyService,
+      identifiers as unknown as PostgresIdentifierService,
     );
-    return { client, policy, service };
+    return { client, identifiers, policy, service };
   }
 
   it('retrieves importable columns with parameterized schema and table names', async () => {
@@ -61,5 +64,57 @@ describe('PostgresTableMetadataService', () => {
 
     await expect(service.getTable('absent', 'customer_records')).rejects.toThrow(NotFoundException);
     expect(client.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports whether a table exists', async () => {
+    const { client, service } = setup();
+    client.query.mockResolvedValueOnce({ rows: [{ exists: true }] });
+
+    await expect(service.tableExists('public', 'new_customers')).resolves.toBe(true);
+    expect(client.query).toHaveBeenCalledWith(expect.any(String), ['public', 'new_customers']);
+  });
+
+  it('creates a table with the requested column types after validating identifiers and policy', async () => {
+    const { client, identifiers, policy, service } = setup();
+    client.query.mockResolvedValueOnce({ rows: [] });
+
+    await service.createTable('public', 'new_customers', [
+      { name: 'name', type: 'text' },
+      { name: 'created_at', type: 'timestamp' },
+    ]);
+
+    expect(policy.assertAllowed).toHaveBeenCalledWith('public', 'new_customers');
+    expect(identifiers.validateNewIdentifier).toHaveBeenCalledWith('public');
+    expect(identifiers.validateNewIdentifier).toHaveBeenCalledWith('new_customers');
+    expect(identifiers.validateNewIdentifier).toHaveBeenCalledWith('name');
+    expect(identifiers.validateNewIdentifier).toHaveBeenCalledWith('created_at');
+    expect(client.query).toHaveBeenCalledWith(
+      'CREATE TABLE "public"."new_customers" ("name" text, "created_at" timestamp)',
+    );
+  });
+
+  it('refuses to create a table with no columns', async () => {
+    const { service } = setup();
+
+    await expect(service.createTable('public', 'new_customers', [])).rejects.toThrow(BadRequestException);
+  });
+
+  it('refuses to create a table with duplicate column names', async () => {
+    const { service } = setup();
+
+    await expect(
+      service.createTable('public', 'new_customers', [
+        { name: 'name', type: 'text' },
+        { name: 'name', type: 'text' },
+      ]),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('refuses to create a table with a column type outside the allowlist', async () => {
+    const { service } = setup();
+
+    await expect(
+      service.createTable('public', 'new_customers', [{ name: 'name', type: 'text; DROP TABLE users; --' }]),
+    ).rejects.toThrow(BadRequestException);
   });
 });

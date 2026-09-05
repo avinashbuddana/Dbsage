@@ -6,6 +6,7 @@ export interface ColumnMapping {
   csvHeader: string;
   sample: string;
   targetColumn: string | null;
+  dataType?: string;
 }
 
 export type MappingRowStatus = 'matched' | 'review' | 'unmapped';
@@ -53,6 +54,14 @@ export function mappingToColumnMapping(mapping: ColumnMapping[]): Record<string,
   const result: Record<string, string> = {};
   for (const row of mapping) {
     if (row.targetColumn) result[row.csvHeader] = row.targetColumn;
+  }
+  return result;
+}
+
+export function mappingToColumnTypes(mapping: ColumnMapping[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const row of mapping) {
+    if (row.targetColumn && row.dataType) result[row.targetColumn] = row.dataType;
   }
   return result;
 }

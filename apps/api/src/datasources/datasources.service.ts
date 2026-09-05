@@ -58,27 +58,12 @@ export class DatasourcesService {
     input: TestDatasourceConnectionDto,
   ): Promise<ConnectionTestResult> {
     const config = await this.resolveCandidate(organizationId, randomUUID(), input);
-    try {
-      const result = await this.connectionManager.testConfig(config);
-      await this.audit.record(organizationId, AuditEvent.DatasourceConnectionTestSucceeded, {
-        databaseType: config.type,
-        connectionMode: config.connectionMode,
-        durationMs: result.latencyMs,
-      });
-      return result;
-    } catch (error) {
-      await this.audit.record(organizationId, AuditEvent.DatasourceConnectionTestFailed, {
-        databaseType: config.type,
-        connectionMode: config.connectionMode,
-        errorCode: this.errorCode(error),
-      });
-      throw error;
-    }
+    return this.testOrAudit(organizationId, config);
   }
 
   async create(organizationId: string, input: CreateDatasourceDto): Promise<DatasourceResponse> {
     const config = await this.resolveCandidate(organizationId, randomUUID(), input);
-    await this.connectionManager.testConfig(config);
+    await this.testOrAudit(organizationId, config);
 
     return this.database.transaction(async (manager) => {
       const repository = manager.getRepository(DatasourceEntity);
@@ -190,7 +175,7 @@ export class DatasourcesService {
       'ssh',
     ].some((field) => field in input);
     if (criticalChange || input.status === DatasourceStatus.Active) {
-      await this.connectionManager.testConfig(candidate);
+      await this.testOrAudit(organizationId, candidate);
     }
 
     const targetStatus = input.status ?? datasource.status;
@@ -265,7 +250,7 @@ export class DatasourcesService {
     ) {
       throw new BadRequestException('Unsupported connection mode');
     }
-    if (input.databaseType !== DatasourceType.MySql) {
+    if (!Object.values(DatasourceType).includes(input.databaseType)) {
       throw new BadRequestException('Unsupported datasource type');
     }
     if (input.connectionMode === DatasourceConnectionMode.Direct && input.ssh) {
@@ -277,12 +262,17 @@ export class DatasourcesService {
 
     const host =
       input.connectionMode === DatasourceConnectionMode.Direct
-        ? await this.networkPolicy.validateTarget(input.host, input.connectionMode)
+        ? await this.networkPolicy.validateTarget(input.host)
         : this.networkPolicy.validateRemoteTarget(input.host);
     const ssh = input.ssh
       ? {
-          ...input.ssh,
-          host: await this.networkPolicy.validateTarget(input.ssh.host, input.connectionMode),
+          host: await this.networkPolicy.validateTarget(input.ssh.host),
+          port: input.ssh.port,
+          username: input.ssh.username,
+          authenticationType: input.ssh.authenticationType,
+          password: input.ssh.password,
+          privateKey: input.ssh.privateKey,
+          privateKeyPassphrase: input.ssh.privateKeyPassphrase,
         }
       : undefined;
     this.validateSshAuthentication(ssh);
@@ -425,6 +415,28 @@ export class DatasourcesService {
         { datasourceId },
         manager,
       );
+    }
+  }
+
+  private async testOrAudit(
+    organizationId: string,
+    config: ResolvedCandidate,
+  ): Promise<ConnectionTestResult> {
+    try {
+      const result = await this.connectionManager.testConfig(config);
+      await this.audit.record(organizationId, AuditEvent.DatasourceConnectionTestSucceeded, {
+        databaseType: config.type,
+        connectionMode: config.connectionMode,
+        durationMs: result.latencyMs,
+      });
+      return result;
+    } catch (error) {
+      await this.audit.record(organizationId, AuditEvent.DatasourceConnectionTestFailed, {
+        databaseType: config.type,
+        connectionMode: config.connectionMode,
+        errorCode: this.errorCode(error),
+      });
+      throw error;
     }
   }
 

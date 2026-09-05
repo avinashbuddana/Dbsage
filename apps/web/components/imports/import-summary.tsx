@@ -3,6 +3,7 @@ interface ImportSummaryProps {
   fileSize: string;
   schema: string;
   table: string;
+  createTable?: boolean;
   matchedCount: number;
   ignoredCount: number;
   totalColumns: number;
@@ -16,6 +17,7 @@ export function ImportSummary({
   fileSize,
   schema,
   table,
+  createTable = false,
   matchedCount,
   ignoredCount,
   totalColumns,
@@ -34,7 +36,7 @@ export function ImportSummary({
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Destination</p>
-          <p className="mt-1 text-slate-900">SchemaIQ PostgreSQL</p>
+          <p className="mt-1 text-slate-900">{createTable ? 'New PostgreSQL table' : 'SchemaIQ PostgreSQL'}</p>
           <p className="text-sm text-slate-500">{`${schema}.${table}`}</p>
         </div>
         <div>

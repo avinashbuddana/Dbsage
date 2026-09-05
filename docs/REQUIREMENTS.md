@@ -1,14 +1,14 @@
 # Functional requirements
 
-Statuses are `PLANNED`, `IN_PROGRESS`, or `IMPLEMENTED`. Future requirements remain planned during Milestone 0.
+Statuses are `PLANNED`, `IN_PROGRESS`, or `IMPLEMENTED`. Requirements move to implemented only when their authorized milestone is delivered.
 
 | ID     | Requirement                     | Status  |
 | ------ | ------------------------------- | ------- |
 | FR-001 | User authentication             | PLANNED |
 | FR-002 | Organization management         | PLANNED |
-| FR-003 | Datasource management           | PLANNED |
-| FR-004 | Secure credential management    | PLANNED |
-| FR-005 | MySQL connectivity              | PLANNED |
+| FR-003 | Datasource management           | IMPLEMENTED |
+| FR-004 | Secure credential management    | IMPLEMENTED |
+| FR-005 | MySQL connectivity              | IMPLEMENTED |
 | FR-006 | Schema introspection            | PLANNED |
 | FR-007 | Relationship discovery          | PLANNED |
 | FR-008 | Schema questions                | PLANNED |
@@ -19,5 +19,6 @@ Statuses are `PLANNED`, `IN_PROGRESS`, or `IMPLEMENTED`. Future requirements rem
 | FR-013 | Schema synchronization          | PLANNED |
 | FR-014 | Audit logging                   | PLANNED |
 | FR-015 | Query history                   | PLANNED |
+| FR-016 | PostgreSQL CSV bulk import      | IMPLEMENTED |
 
 The User, Organization, OrganizationMember, and AuditLog persistence schemas are foundation infrastructure; they do not mark their corresponding product workflows implemented.

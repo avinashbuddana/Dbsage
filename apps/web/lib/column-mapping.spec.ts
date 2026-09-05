@@ -1,7 +1,7 @@
 import type { ImportTargetColumnResponse } from '@schemaiq/types';
 import { describe, expect, it } from 'vitest';
 
-import { initializeMapping, mappingRowStatus, mappingToColumnMapping, summarizeMapping } from './column-mapping';
+import { initializeMapping, mappingRowStatus, mappingToColumnMapping, mappingToColumnTypes, summarizeMapping } from './column-mapping';
 
 const targetColumns: ImportTargetColumnResponse[] = [
   { dataType: 'text', hasDefault: false, isGenerated: false, isIdentity: false, isNullable: false, name: 'email' },
@@ -59,5 +59,17 @@ describe('mappingToColumnMapping', () => {
     ];
 
     expect(mappingToColumnMapping(mapping)).toEqual({ email: 'email' });
+  });
+});
+
+describe('mappingToColumnTypes', () => {
+  it('converts to a targetColumn-to-dataType record, omitting rows without a type or target column', () => {
+    const mapping = [
+      { csvHeader: 'created_at', sample: '', targetColumn: 'created_at', dataType: 'timestamp' },
+      { csvHeader: 'name', sample: '', targetColumn: 'name', dataType: 'text' },
+      { csvHeader: 'unknown_code', sample: '', targetColumn: null },
+    ];
+
+    expect(mappingToColumnTypes(mapping)).toEqual({ created_at: 'timestamp', name: 'text' });
   });
 });

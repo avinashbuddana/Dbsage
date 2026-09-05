@@ -3,7 +3,7 @@ import { REQUEST } from '@nestjs/core';
 import type { Request } from 'express';
 import { isUUID } from 'class-validator';
 
-import type { AppConfigService } from '../config/app-config.service';
+import { AppConfigService } from '../config/app-config.service';
 
 @Injectable({ scope: Scope.REQUEST })
 export class OrganizationContextService {

@@ -2,9 +2,13 @@ import type { DataSource } from 'typeorm';
 
 import type { AppConfigService } from '../config/app-config.service';
 import type { DatabaseConnectorFactory } from '../database-connectors/database-connector.factory';
-import type { DatabaseConnector } from '../database-connectors/database-connector.interface';
 import type { CustomerDatabaseConnectionConfig } from '../database-connectors/database-connector.types';
-import { DatasourceConnectionMode, DatasourceStatus, DatasourceType } from '../datasources/enums/datasource.enums';
+import {
+  DatasourceConnectionMode,
+  DatasourceStatus,
+  DatasourceType,
+  SshAuthenticationType,
+} from '../datasources/enums/datasource.enums';
 import type { SshTunnelService } from '../ssh/ssh-tunnel.service';
 import { DatabaseConnectionManager } from './database-connection.manager';
 import type { DatasourceConfigResolver } from './datasource-config.resolver';
@@ -23,6 +27,19 @@ const config: CustomerDatabaseConnectionConfig = {
   sslEnabled: true,
 };
 
+const sshConfig: CustomerDatabaseConnectionConfig = {
+  ...config,
+  connectionMode: DatasourceConnectionMode.SshTunnel,
+  host: '10.1.2.3',
+  ssh: {
+    host: 'bastion.example.com',
+    port: 22,
+    username: 'tunnel-user',
+    authenticationType: SshAuthenticationType.PrivateKey,
+    privateKey: 'private-key',
+  },
+};
+
 function dataSource(): DataSource {
   return {
     isInitialized: true,
@@ -30,20 +47,29 @@ function dataSource(): DataSource {
   } as unknown as DataSource;
 }
 
+function tunnelHandle() {
+  return {
+    host: '127.0.0.1' as const,
+    port: 41_234,
+    isHealthy: jest.fn().mockReturnValue(true),
+    close: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 function setup(maxActiveDatasources = 2) {
   const created: DataSource[] = [];
-  const connector: DatabaseConnector = {
-    createDataSource: jest.fn(async () => {
+  const connector = {
+    createDataSource: jest.fn(() => {
       const value = dataSource();
       created.push(value);
-      return value;
+      return Promise.resolve(value);
     }),
     testConnection: jest.fn(),
     ping: jest.fn().mockResolvedValue(undefined),
-    close: jest.fn(async (value: DataSource) => value.destroy()),
+    close: jest.fn((value: DataSource) => value.destroy()),
   };
-  const factory = { get: jest.fn().mockReturnValue(connector) } as unknown as DatabaseConnectorFactory;
-  const resolver = { resolve: jest.fn().mockResolvedValue(config) } as unknown as DatasourceConfigResolver;
+  const factory = { get: jest.fn().mockReturnValue(connector) };
+  const resolver = { resolve: jest.fn().mockResolvedValue(config) };
   const appConfig = {
     mysql: {
       maxActiveDatasources,
@@ -52,11 +78,18 @@ function setup(maxActiveDatasources = 2) {
       poolSize: 3,
       connectTimeoutMs: 5_000,
     },
-  } as unknown as AppConfigService;
-  const ssh = { createTunnel: jest.fn() } as unknown as SshTunnelService;
-  const manager = new DatabaseConnectionManager(factory, resolver, appConfig, ssh);
+  };
+  const ssh = { createTunnel: jest.fn() };
+  const logger = { warn: jest.fn() };
+  const manager = new DatabaseConnectionManager(
+    factory as unknown as DatabaseConnectorFactory,
+    resolver as unknown as DatasourceConfigResolver,
+    appConfig as unknown as AppConfigService,
+    ssh as unknown as SshTunnelService,
+    logger as unknown as ConstructorParameters<typeof DatabaseConnectionManager>[4],
+  );
 
-  return { connector, created, manager, resolver };
+  return { connector, created, manager, resolver, ssh, logger };
 }
 
 describe('DatabaseConnectionManager', () => {
@@ -117,7 +150,9 @@ describe('DatabaseConnectionManager', () => {
     await manager.closeAll();
 
     expect(created).toHaveLength(2);
-    expect(created.every((value) => jest.mocked(value.destroy).mock.calls.length === 1)).toBe(true);
+    expect(created.every((value) => (value.destroy as jest.Mock).mock.calls.length === 1)).toBe(
+      true,
+    );
   });
 
   it('refuses disabled datasources', async () => {
@@ -127,5 +162,52 @@ describe('DatabaseConnectionManager', () => {
     await expect(
       manager.getOrCreateDataSource(config.organizationId, config.datasourceId),
     ).rejects.toMatchObject({ code: 'DATASOURCE_DISABLED' });
+  });
+
+  it('reuses one SSH tunnel across concurrent initialization and closes it on shutdown', async () => {
+    const { manager, resolver, ssh } = setup();
+    jest.mocked(resolver.resolve).mockResolvedValue(sshConfig);
+    const tunnel = tunnelHandle();
+    jest.mocked(ssh.createTunnel).mockResolvedValue(tunnel);
+
+    const [first, second] = await Promise.all([
+      manager.getOrCreateDataSource(sshConfig.organizationId, sshConfig.datasourceId),
+      manager.getOrCreateDataSource(sshConfig.organizationId, sshConfig.datasourceId),
+    ]);
+
+    expect(first).toBe(second);
+    expect(ssh.createTunnel).toHaveBeenCalledTimes(1);
+    expect(tunnel.close).not.toHaveBeenCalled();
+
+    await manager.closeAll();
+    expect(tunnel.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the SSH tunnel when the datasource is invalidated', async () => {
+    const { manager, resolver, ssh } = setup();
+    jest.mocked(resolver.resolve).mockResolvedValue(sshConfig);
+    const tunnel = tunnelHandle();
+    jest.mocked(ssh.createTunnel).mockResolvedValue(tunnel);
+
+    await manager.getOrCreateDataSource(sshConfig.organizationId, sshConfig.datasourceId);
+    await manager.invalidateDatasource(sshConfig.datasourceId);
+
+    expect(tunnel.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the temporary SSH tunnel after a one-off connection test', async () => {
+    const { connector, manager, ssh } = setup();
+    const tunnel = tunnelHandle();
+    jest.mocked(ssh.createTunnel).mockResolvedValue(tunnel);
+    jest.mocked(connector.testConnection).mockResolvedValue({
+      success: true,
+      latencyMs: 1,
+      databaseType: DatasourceType.MySql,
+    });
+
+    await manager.testConfig(sshConfig);
+
+    expect(ssh.createTunnel).toHaveBeenCalledTimes(1);
+    expect(tunnel.close).toHaveBeenCalledTimes(1);
   });
 });

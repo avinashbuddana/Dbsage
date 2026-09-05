@@ -4,7 +4,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"],
-      "@schemaiq/shared": ["../../packages/shared/src/index.ts"]
+      "@schemaiq/shared": ["../../packages/shared/src/index.ts"],
+      "@schemaiq/types": ["../../packages/types/src/index.ts"]
     },
     "tsBuildInfoFile": ".next/cache/tsconfig.tsbuildinfo"
   },

@@ -48,6 +48,26 @@ describe('ImportSummary', () => {
     expect(screen.getByText('Immediate import')).toBeInTheDocument();
   });
 
+  it('indicates a new table will be created', () => {
+    render(
+      <ImportSummary
+        fileName="small.csv"
+        fileSize="4 KB"
+        schema="public"
+        table="new_customers"
+        createTable
+        matchedCount={2}
+        ignoredCount={0}
+        totalColumns={2}
+        isLarge={false}
+        onBack={vi.fn()}
+        onStart={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('New PostgreSQL table')).toBeInTheDocument();
+  });
+
   it('calls onBack and onStart', async () => {
     const onBack = vi.fn();
     const onStart = vi.fn();
