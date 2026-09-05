@@ -73,7 +73,13 @@ export class ImportsController {
 
   @Get()
   findAll(@Query() query: ImportQueryDto): Promise<{ items: DataImportResponse[]; total: number }> {
-    return this.imports.findAll(this.organizationContext.getOrganizationId(), query.page, query.limit);
+    return this.imports.findAll(
+      this.organizationContext.getOrganizationId(),
+      query.page,
+      query.limit,
+      query.status,
+      query.search,
+    );
   }
 
   @Get('config')

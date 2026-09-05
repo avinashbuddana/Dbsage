@@ -119,6 +119,15 @@ describe('ImportsController', () => {
     );
   });
 
+  it('forwards status and search query params to the service', async () => {
+    imports.findAll.mockResolvedValue({ items: [], total: 0 });
+
+    const httpServer = app.getHttpServer() as Parameters<typeof request>[0];
+    await request(httpServer).get('/imports').query({ limit: 10, page: 1, search: 'customers', status: 'FAILED' }).expect(200);
+
+    expect(imports.findAll).toHaveBeenCalledWith(organizationId, 1, 10, 'FAILED', 'customers');
+  });
+
   it('returns the client configuration', async () => {
     imports.getClientConfiguration.mockReturnValue({
       allowedDelimiters: [',', ';', '|'],

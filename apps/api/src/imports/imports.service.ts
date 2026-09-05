@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In } from 'typeorm';
+import { ILike, In } from 'typeorm';
 import type { Repository } from 'typeorm';
 
 import { AuditEvent, AuditService } from '../audit/audit.service';
@@ -211,12 +211,18 @@ export class ImportsService {
     organizationId: string,
     page: number,
     limit: number,
+    status?: DataImportStatus,
+    search?: string,
   ): Promise<{ items: DataImportResponse[]; total: number }> {
     const [items, total] = await this.repository.findAndCount({
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
-      where: { organizationId },
+      where: {
+        organizationId,
+        ...(status ? { status } : {}),
+        ...(search ? { originalFileName: ILike(`%${search}%`) } : {}),
+      },
     });
     return { items: items.map((item) => this.toResponse(item)), total };
   }

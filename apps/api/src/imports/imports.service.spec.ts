@@ -266,6 +266,37 @@ describe('ImportsService', () => {
     );
   });
 
+  it('filters findAll by status when provided', async () => {
+    const { repository, service } = setup();
+    repository.findAndCount = jest.fn().mockResolvedValue([[], 0]);
+
+    await service.findAll(organizationId, 1, 20, DataImportStatus.Failed);
+
+    expect(repository.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { organizationId, status: DataImportStatus.Failed } }),
+    );
+  });
+
+  it('filters findAll by a case-insensitive filename search when provided', async () => {
+    const { repository, service } = setup();
+    repository.findAndCount = jest.fn().mockResolvedValue([[], 0]);
+
+    await service.findAll(organizationId, 1, 20, undefined, 'customers');
+
+    const call = (repository.findAndCount as jest.Mock).mock.calls[0][0] as { where: { organizationId: string; originalFileName: { value: string } } };
+    expect(call.where.organizationId).toBe(organizationId);
+    expect(call.where.originalFileName.value).toContain('customers');
+  });
+
+  it('omits status/search from the where clause when not provided', async () => {
+    const { repository, service } = setup();
+    repository.findAndCount = jest.fn().mockResolvedValue([[], 0]);
+
+    await service.findAll(organizationId, 1, 20);
+
+    expect(repository.findAndCount).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId } }));
+  });
+
   it('maps csvImport config to the client configuration shape', () => {
     const { service } = setup();
 
