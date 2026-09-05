@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -79,21 +79,29 @@ describe('NewImportPage', () => {
     });
   });
 
+  async function uploadMockFileAndWait(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByText('mock-upload'));
+    // previewCsv reads the file via FileReader, which resolves asynchronously
+    // (on a later tick than the click itself) -- wait for that to land before
+    // asserting on or acting on state that depends on it.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled();
+    });
+  }
+
   it('does not allow continuing past Upload until a file is chosen', async () => {
     const user = userEvent.setup();
     render(<NewImportPage />);
 
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
 
-    await user.click(screen.getByText('mock-upload'));
-
-    expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled();
+    await uploadMockFileAndWait(user);
   });
 
   it('does not allow continuing past Destination until schema and table are chosen', async () => {
     const user = userEvent.setup();
     render(<NewImportPage />);
-    await user.click(screen.getByText('mock-upload'));
+    await uploadMockFileAndWait(user);
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
@@ -109,7 +117,7 @@ describe('NewImportPage', () => {
     const user = userEvent.setup();
     render(<NewImportPage />);
 
-    await user.click(screen.getByText('mock-upload'));
+    await uploadMockFileAndWait(user);
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(screen.getByText('mock-select-schema'));
     await user.click(screen.getByText('mock-select-table'));
@@ -123,7 +131,7 @@ describe('NewImportPage', () => {
     expect(call.input.columnMapping).toEqual({ email: 'email', last_name: 'last_name' });
     expect(call.input.targetSchema).toBe('public');
     expect(call.input.targetTable).toBe('customers');
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/dashboard/imports/import-123');
     });
   });
@@ -133,7 +141,7 @@ describe('NewImportPage', () => {
     const user = userEvent.setup();
     render(<NewImportPage />);
 
-    await user.click(screen.getByText('mock-upload'));
+    await uploadMockFileAndWait(user);
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(screen.getByText('mock-select-schema'));
     await user.click(screen.getByText('mock-select-table'));
