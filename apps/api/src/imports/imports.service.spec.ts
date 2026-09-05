@@ -50,7 +50,9 @@ function entity(overrides: Partial<DataImportEntity> = {}): DataImportEntity {
 
 function setup() {
   const repository = {
+    count: jest.fn(),
     create: jest.fn((value: Partial<DataImportEntity>) => entity(value)),
+    createQueryBuilder: jest.fn(),
     delete: jest.fn(),
     find: jest.fn(),
     findAndCount: jest.fn(),
@@ -276,5 +278,48 @@ describe('ImportsService', () => {
       maxHeaderLength: 256,
       queueThresholdBytes: 5,
     });
+  });
+
+  it('aggregates organization-scoped import counts and completed row totals', async () => {
+    const { repository, service } = setup();
+    repository.count = jest
+      .fn()
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(6)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(2);
+    const queryBuilder = {
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ sum: '48210' }),
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+    };
+    repository.createQueryBuilder = jest.fn().mockReturnValue(queryBuilder);
+
+    const summary = await service.summary(organizationId);
+
+    expect(summary).toEqual({
+      completedImports: '6',
+      failedImports: '2',
+      processingImports: '2',
+      totalImports: '10',
+      totalRowsImported: '48210',
+    });
+  });
+
+  it('reports zero rows imported when no import has completed yet', async () => {
+    const { repository, service } = setup();
+    repository.count = jest.fn().mockResolvedValue(0);
+    const queryBuilder = {
+      andWhere: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue(undefined),
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+    };
+    repository.createQueryBuilder = jest.fn().mockReturnValue(queryBuilder);
+
+    const summary = await service.summary(organizationId);
+
+    expect(summary.totalRowsImported).toBe('0');
   });
 });

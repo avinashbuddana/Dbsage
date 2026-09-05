@@ -17,6 +17,7 @@ import {
 import type { Response } from 'express';
 
 import type {
+  DataImportSummaryResponse,
   ImportClientConfigurationResponse,
   ImportTargetSchemaResponse,
   ImportTargetTableResponse,
@@ -78,6 +79,11 @@ export class ImportsController {
   @Get('config')
   getClientConfiguration(): ImportClientConfigurationResponse {
     return this.imports.getClientConfiguration();
+  }
+
+  @Get('summary')
+  getSummary(): Promise<DataImportSummaryResponse> {
+    return this.imports.summary(this.organizationContext.getOrganizationId());
   }
 
   @Get('targets/schemas')

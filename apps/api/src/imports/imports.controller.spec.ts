@@ -134,6 +134,22 @@ describe('ImportsController', () => {
     expect((response.body as { queueThresholdBytes: number }).queueThresholdBytes).toBe(5_242_880);
   });
 
+  it('returns the organization import summary', async () => {
+    imports.summary.mockResolvedValue({
+      completedImports: '6',
+      failedImports: '2',
+      processingImports: '2',
+      totalImports: '10',
+      totalRowsImported: '48210',
+    });
+
+    const httpServer = app.getHttpServer() as Parameters<typeof request>[0];
+    const response = await request(httpServer).get('/imports/summary').expect(200);
+
+    expect(imports.summary).toHaveBeenCalledWith(organizationId);
+    expect((response.body as { totalImports: string }).totalImports).toBe('10');
+  });
+
   it('lists allowed target schemas', async () => {
     metadata.listSchemas.mockResolvedValue(['public', 'analytics']);
 

@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { In } from 'typeorm';
 import type { Repository } from 'typeorm';
 
 import { AuditEvent, AuditService } from '../audit/audit.service';
@@ -18,6 +19,7 @@ import { canTransitionDataImportStatus } from './import-status';
 import type {
   CreateCsvImportInput,
   DataImportResponse,
+  DataImportSummary,
   ImportClientConfiguration,
   ImportProgress,
   UploadedCsvFile,
@@ -226,6 +228,38 @@ export class ImportsService {
       maxFileSizeBytes: this.config.csvImport.maxFileSizeBytes,
       maxHeaderLength: this.config.csvImport.maxHeaderLength,
       queueThresholdBytes: this.config.csvImport.queueThresholdBytes,
+    };
+  }
+
+  async summary(organizationId: string): Promise<DataImportSummary> {
+    const [totalImports, completedImports, processingImports, failedImports, completedSum] = await Promise.all([
+      this.repository.count({ where: { organizationId } }),
+      this.repository.count({ where: { organizationId, status: DataImportStatus.Completed } }),
+      this.repository.count({
+        where: {
+          organizationId,
+          status: In([
+            DataImportStatus.Uploaded,
+            DataImportStatus.Validating,
+            DataImportStatus.Queued,
+            DataImportStatus.Processing,
+          ]),
+        },
+      }),
+      this.repository.count({ where: { organizationId, status: DataImportStatus.Failed } }),
+      this.repository
+        .createQueryBuilder('import')
+        .select('COALESCE(SUM(import.successfulRows), 0)', 'sum')
+        .where('import.organizationId = :organizationId', { organizationId })
+        .andWhere('import.status = :status', { status: DataImportStatus.Completed })
+        .getRawOne<{ sum: string }>(),
+    ]);
+    return {
+      completedImports: String(completedImports),
+      failedImports: String(failedImports),
+      processingImports: String(processingImports),
+      totalImports: String(totalImports),
+      totalRowsImported: completedSum?.sum ?? '0',
     };
   }
 
