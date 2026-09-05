@@ -7,11 +7,14 @@ import type { Environment } from '../config/environment';
 import { DatasourceSecretEntity } from '../credentials/datasource-secret.entity';
 import { DatasourceSshConfigEntity } from '../datasources/entities/datasource-ssh-config.entity';
 import { DatasourceEntity } from '../datasources/entities/datasource.entity';
+import { DataImportEntity } from '../imports/entities/data-import.entity';
 import { OrganizationMemberEntity } from '../organizations/organization-member.entity';
 import { OrganizationEntity } from '../organizations/organization.entity';
 import { UserEntity } from '../users/user.entity';
 import { InitialFoundation1725321600000 } from './migrations/1725321600000-initial-foundation';
 import { SecureMysqlDatasources1788393600000 } from './migrations/1788393600000-secure-mysql-datasources';
+import { PostgreSqlCsvImports1788480000000 } from './migrations/1788480000000-postgresql-csv-imports';
+import { CsvImportDuplicateProtection1788500000000 } from './migrations/1788500000000-csv-import-duplicate-protection';
 
 const entities = [
   UserEntity,
@@ -21,8 +24,14 @@ const entities = [
   DatasourceEntity,
   DatasourceSshConfigEntity,
   DatasourceSecretEntity,
+  DataImportEntity,
 ];
-const migrations = [InitialFoundation1725321600000, SecureMysqlDatasources1788393600000];
+const migrations = [
+  InitialFoundation1725321600000,
+  SecureMysqlDatasources1788393600000,
+  PostgreSqlCsvImports1788480000000,
+  CsvImportDuplicateProtection1788500000000,
+];
 
 interface InternalDatabaseConfig {
   host: string;
