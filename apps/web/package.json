@@ -8,6 +8,7 @@
     "build": "next build --webpack",
     "start": "next start --port ${WEB_PORT:-3000}",
     "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --filter @schemaiq/shared build && pnpm --filter @schemaiq/types build",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test"
