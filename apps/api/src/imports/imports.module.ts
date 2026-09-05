@@ -5,6 +5,7 @@ import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { CsvImportUploadInterceptor } from './csv-import-upload.interceptor';
 import { DataImportEntity } from './entities/data-import.entity';
+import { DuplicateImportService } from './hashing/duplicate-import.service';
 import { FileHashService } from './hashing/file-hash.service';
 import { ImportFileCleanupService } from './import-file-cleanup.service';
 import { ImportsController } from './imports.controller';
@@ -26,6 +27,7 @@ import { PostgresColumnMappingValidator } from './validators/postgres-column-map
   imports: [TypeOrmModule.forFeature([DataImportEntity]), AuditModule, AuthModule],
   controllers: [ImportsController],
   providers: [
+    DuplicateImportService,
     FileHashService,
     LocalImportFileStorage,
     { provide: IMPORT_FILE_STORAGE, useExisting: LocalImportFileStorage },
