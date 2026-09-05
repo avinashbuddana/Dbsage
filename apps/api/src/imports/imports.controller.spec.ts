@@ -28,7 +28,7 @@ describe('ImportsController', () => {
   };
   const metadata = { listSchemas: jest.fn(), listTables: jest.fn(), getTable: jest.fn() };
   const storage = {
-    delete: jest.fn(),
+    delete: jest.fn().mockResolvedValue(undefined),
     exists: jest.fn(),
     openReadStream: jest.fn(),
     store: jest.fn(async (source: Readable) => {
@@ -37,7 +37,7 @@ describe('ImportsController', () => {
         if (!Buffer.isBuffer(chunk)) throw new Error('Expected a binary multipart stream');
         sizeBytes += chunk.length;
       }
-      return { fileReference: '00000000-0000-4000-8000-000000000002.csv', sizeBytes };
+      return { fileHash: 'deadbeef', fileReference: '00000000-0000-4000-8000-000000000002.csv', sizeBytes };
     }),
   };
 
@@ -109,13 +109,64 @@ describe('ImportsController', () => {
     expect(storage.store).toHaveBeenCalledTimes(1);
     expect(imports.create).toHaveBeenCalledWith(
       organizationId,
-      { columnMapping: { name: 'name' }, delimiter: ',', targetSchema: 'public', targetTable: 'customer_records' },
       {
+        columnMapping: { name: 'name' },
+        columnTypes: {},
+        createTable: false,
+        delimiter: ',',
+        targetSchema: 'public',
+        targetTable: 'customer_records',
+      },
+      {
+        fileHash: 'deadbeef',
         fileReference: '00000000-0000-4000-8000-000000000002.csv',
         mimeType: 'text/csv',
         originalFileName: 'records.csv',
         sizeBytes: 9,
       },
+    );
+  });
+
+  it('forwards createTable=true through to the service when requested', async () => {
+    imports.create.mockResolvedValue({
+      completedAt: null,
+      createdAt: new Date(),
+      delimiter: ',',
+      errorCode: null,
+      errorMessage: null,
+      failedRows: '0',
+      fileSizeBytes: '9',
+      hasHeader: true,
+      id: '00000000-0000-4000-8000-000000000004',
+      mimeType: 'text/csv',
+      originalFileName: 'records.csv',
+      processedBytes: '0',
+      processedRows: '0',
+      processingMode: DataImportProcessingMode.Synchronous,
+      progressPercent: 0,
+      startedAt: null,
+      status: DataImportStatus.Completed,
+      successfulRows: '1',
+      targetSchema: 'public',
+      targetTable: 'new_customers',
+      totalRows: '1',
+      updatedAt: new Date(),
+    });
+
+    const httpServer = app.getHttpServer() as Parameters<typeof request>[0];
+    await request(httpServer)
+      .post('/imports/csv')
+      .field('targetSchema', 'public')
+      .field('targetTable', 'new_customers')
+      .field('columnMapping', '{"name":"name"}')
+      .field('createTable', 'true')
+      .attach('file', Buffer.from('name\nAda\n'), { contentType: 'text/csv', filename: 'records.csv' })
+      .expect(201);
+
+    expect(imports.create).toHaveBeenCalledWith(
+      organizationId,
+      expect.objectContaining({ createTable: true }),
+      expect.anything(),
     );
   });
 

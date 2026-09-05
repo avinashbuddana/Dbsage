@@ -26,7 +26,7 @@ import type {
 
 import { OrganizationContextService } from '../auth/organization-context.service';
 import { CsvImportUploadInterceptor } from './csv-import-upload.interceptor';
-import { CreateCsvImportDto, parseColumnMapping } from './dto/create-import.dto';
+import { CreateCsvImportDto, parseColumnMapping, parseColumnTypes } from './dto/create-import.dto';
 import { ImportQueryDto } from './dto/import-query.dto';
 import { ImportTargetSchemaParamsDto, ImportTargetTableParamsDto } from './dto/import-target.dto';
 import { DataImportProcessingMode } from './enums/data-import-processing-mode.enum';
@@ -49,16 +49,19 @@ export class ImportsController {
     @UploadedFile() file: Express.Multer.File | undefined,
     @Res({ passthrough: true }) response: Response,
   ): Promise<DataImportResponse> {
-    if (!file?.filename) throw new BadRequestException('CSV upload is required');
+    if (!file?.filename || !file.fileHash) throw new BadRequestException('CSV upload is required');
     const result = await this.imports.create(
       this.organizationContext.getOrganizationId(),
       {
         columnMapping: parseColumnMapping(input.columnMapping),
+        columnTypes: parseColumnTypes(input.columnTypes),
+        createTable: input.createTable,
         delimiter: input.delimiter,
         targetSchema: input.targetSchema,
         targetTable: input.targetTable,
       },
       {
+        fileHash: file.fileHash,
         fileReference: file.filename,
         mimeType: file.mimetype,
         originalFileName: file.originalname,
