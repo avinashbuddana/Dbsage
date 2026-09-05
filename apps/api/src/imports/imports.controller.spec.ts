@@ -110,10 +110,13 @@ describe('ImportsController', () => {
     expect(imports.create).toHaveBeenCalledWith(
       organizationId,
       {
+        arrayDelimiter: undefined,
         columnMapping: { name: 'name' },
         columnTypes: {},
         createTable: false,
+        dateFormat: undefined,
         delimiter: ',',
+        importMode: 'STRICT',
         targetSchema: 'public',
         targetTable: 'customer_records',
       },

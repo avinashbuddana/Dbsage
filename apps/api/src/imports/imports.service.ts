@@ -11,6 +11,7 @@ import type { Repository } from 'typeorm';
 
 import { AuditEvent, AuditService } from '../audit/audit.service';
 import { AppConfigService } from '../config/app-config.service';
+import { DataImportErrorEntity } from './entities/data-import-error.entity';
 import { DataImportEntity } from './entities/data-import.entity';
 import { DataImportErrorCode } from './enums/data-import-error-code.enum';
 import { DataImportProcessingMode } from './enums/data-import-processing-mode.enum';
@@ -29,6 +30,7 @@ import type { PreparedCsvImport } from './processors/csv-import.processor';
 import { CsvImportProcessor } from './processors/csv-import.processor';
 import { ImportQueueService } from './queue/import-queue.service';
 import { IMPORT_FILE_STORAGE, type ImportFileStorage } from './storage/import-file-storage.interface';
+import { RowValidationException } from './validation/row-validation.error';
 
 const PROGRESS_BYTES_INTERVAL = 1_048_576;
 const PROGRESS_TIME_INTERVAL_MS = 2_000;
@@ -38,6 +40,8 @@ export class ImportsService {
   constructor(
     @InjectRepository(DataImportEntity)
     private readonly repository: Repository<DataImportEntity>,
+    @InjectRepository(DataImportErrorEntity)
+    private readonly errorRepository: Repository<DataImportErrorEntity>,
     private readonly processor: CsvImportProcessor,
     @Inject(IMPORT_FILE_STORAGE) private readonly storage: ImportFileStorage,
     private readonly queue: ImportQueueService,
@@ -57,15 +61,18 @@ export class ImportsService {
     try {
       importEntity = await this.repository.save(
         this.repository.create({
+          arrayDelimiter: input.arrayDelimiter ?? null,
           columnMapping: input.columnMapping,
           completedAt: null,
           createdByUserId: null,
+          dateFormat: input.dateFormat ?? null,
           delimiter: input.delimiter,
           errorCode: null,
           errorMessage: null,
           failedRows: '0',
           fileDeletedAt: null,
           fileHash: file.fileHash,
+          importMode: input.importMode,
           fileSizeBytes: String(file.sizeBytes),
           hasHeader: true,
           mimeType: file.mimeType,
@@ -306,15 +313,34 @@ export class ImportsService {
       lastPersistedAt = now;
       await onQueueProgress?.(progress);
     });
+    if (result.rowErrors.length > 0) {
+      await this.errorRepository.save(
+        result.rowErrors.map((rowError) =>
+          this.errorRepository.create({
+            csvColumn: rowError.csvColumn,
+            databaseColumn: rowError.databaseColumn,
+            errorMessage: rowError.error,
+            importId: importEntity.id,
+            rawValue: rowError.value,
+            rowNumber: rowError.row,
+            targetType: rowError.targetType,
+          }),
+        ),
+      );
+    }
+    const totalRows = result.rowCount + result.rowErrors.length;
+    const finalStatus =
+      result.rowErrors.length > 0 ? DataImportStatus.PartiallyCompleted : DataImportStatus.Completed;
     Object.assign(importEntity, {
       completedAt: new Date(),
+      failedRows: String(result.rowErrors.length),
       processedBytes: String(result.processedBytes),
-      processedRows: String(result.rowCount),
+      processedRows: String(totalRows),
       progressPercent: 100,
       successfulRows: String(result.rowCount),
-      totalRows: String(result.rowCount),
+      totalRows: String(totalRows),
     });
-    const completed = await this.transition(importEntity, DataImportStatus.Completed);
+    const completed = await this.transition(importEntity, finalStatus);
     await this.audit.record(importEntity.organizationId, AuditEvent.CsvImportCompleted, {
       importId: importEntity.id,
       processedBytes: completed.processedBytes,
@@ -397,6 +423,9 @@ export class ImportsService {
   }
 
   private errorDetails(error: unknown): { code: DataImportErrorCode; message: string } {
+    if (error instanceof RowValidationException) {
+      return { code: DataImportErrorCode.ImportValidationFailed, message: error.message };
+    }
     const postgresCode =
       typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
         ? error.code
@@ -439,6 +468,7 @@ export class ImportsService {
       targetTable: importEntity.targetTable,
       status: importEntity.status,
       processingMode: importEntity.processingMode,
+      importMode: importEntity.importMode,
       delimiter: importEntity.delimiter,
       hasHeader: importEntity.hasHeader,
       totalRows: importEntity.totalRows,

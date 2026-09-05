@@ -1,3 +1,4 @@
+import type { DataImportMode } from './enums/data-import-mode.enum';
 import type { DataImportProcessingMode } from './enums/data-import-processing-mode.enum';
 import type { DataImportStatus } from './enums/data-import-status.enum';
 
@@ -8,6 +9,9 @@ export interface CreateCsvImportInput {
   columnMapping: Record<string, string>;
   columnTypes: Record<string, string>;
   createTable: boolean;
+  importMode: DataImportMode;
+  dateFormat?: string;
+  arrayDelimiter?: string;
 }
 
 export interface UploadedCsvFile {
@@ -33,6 +37,7 @@ export interface DataImportResponse {
   targetTable: string;
   status: DataImportStatus;
   processingMode: DataImportProcessingMode;
+  importMode: DataImportMode;
   delimiter: string;
   hasHeader: boolean;
   totalRows: string | null;

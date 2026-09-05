@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+
+import { DataImportMode } from '../enums/data-import-mode.enum';
 
 export class CreateCsvImportDto {
   @IsString()
@@ -30,6 +32,20 @@ export class CreateCsvImportDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   createTable = false;
+
+  @IsOptional()
+  @IsEnum(DataImportMode)
+  importMode: DataImportMode = DataImportMode.Strict;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 20)
+  dateFormat?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 5)
+  arrayDelimiter?: string;
 }
 
 function parseStringRecord(value: string | undefined, invalidJsonMessage: string, invalidShapeMessage: string): Record<string, string> {

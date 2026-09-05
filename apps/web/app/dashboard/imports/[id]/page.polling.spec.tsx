@@ -1,4 +1,4 @@
-import { DataImportProcessingMode, DataImportStatus } from '@schemaiq/types';
+import { DataImportMode, DataImportProcessingMode, DataImportStatus } from '@schemaiq/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +37,7 @@ const baseImport = {
   fileSizeBytes: '4080218931',
   hasHeader: true,
   id: 'import-1',
+  importMode: DataImportMode.Strict,
   mimeType: 'text/csv',
   originalFileName: 'customers_2026.csv',
   processedBytes: '0',

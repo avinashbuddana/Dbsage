@@ -9,5 +9,7 @@ export class CsvImportPartiallyCompletedStatus1788520000000 implements Migration
 
   // Postgres does not support removing a value from an enum type; this migration
   // is intentionally one-directional.
-  async down(): Promise<void> {}
+  down(): Promise<void> {
+    return Promise.resolve();
+  }
 }

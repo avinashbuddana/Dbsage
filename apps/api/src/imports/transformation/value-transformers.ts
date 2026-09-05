@@ -49,7 +49,7 @@ const DATE_PATTERNS: Readonly<Record<string, RegExp>> = {
   'YYYY-MM-DD': /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/,
 };
 
-export function transformDate(raw: string, dateFormat: string = 'YYYY-MM-DD'): TransformResult {
+export function transformDate(raw: string, dateFormat = 'YYYY-MM-DD'): TransformResult {
   const pattern = DATE_PATTERNS[dateFormat];
   if (!pattern) {
     return { error: `Unsupported date format configuration: ${dateFormat}`, success: false };
@@ -68,7 +68,10 @@ export function transformDate(raw: string, dateFormat: string = 'YYYY-MM-DD'): T
   if (!isValidCalendarDate) {
     return { error: `'${raw}' is not a valid calendar date`, success: false };
   }
-  return { success: true, value: `${groups.year}-${groups.month}-${groups.day}` };
+  const isoYear = String(year).padStart(4, '0');
+  const isoMonth = String(month).padStart(2, '0');
+  const isoDay = String(day).padStart(2, '0');
+  return { success: true, value: `${isoYear}-${isoMonth}-${isoDay}` };
 }
 
 const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;

@@ -20,4 +20,12 @@ describe('data import status transitions', () => {
   it('allows retrying a cancelled import', () => {
     expect(canTransitionDataImportStatus(DataImportStatus.Cancelled, DataImportStatus.Queued)).toBe(true);
   });
+
+  it('allows a processing import to finish partially completed', () => {
+    expect(canTransitionDataImportStatus(DataImportStatus.Processing, DataImportStatus.PartiallyCompleted)).toBe(true);
+  });
+
+  it('does not allow re-importing a partially completed file wholesale', () => {
+    expect(canTransitionDataImportStatus(DataImportStatus.PartiallyCompleted, DataImportStatus.Queued)).toBe(false);
+  });
 });

@@ -11,6 +11,7 @@ describe('ImportStatusBadge', () => {
     [DataImportStatus.Queued, 'Waiting in Queue'],
     [DataImportStatus.Processing, 'Importing'],
     [DataImportStatus.Completed, 'Completed'],
+    [DataImportStatus.PartiallyCompleted, 'Partially Completed'],
     [DataImportStatus.Failed, 'Failed'],
     [DataImportStatus.Cancelled, 'Cancelled'],
   ])('renders a human label for %s', (status, label) => {

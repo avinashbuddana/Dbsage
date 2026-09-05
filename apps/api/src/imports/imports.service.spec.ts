@@ -3,13 +3,16 @@ import type { Repository } from 'typeorm';
 
 import type { AuditService } from '../audit/audit.service';
 import type { AppConfigService } from '../config/app-config.service';
+import type { DataImportErrorEntity } from './entities/data-import-error.entity';
 import { DataImportEntity } from './entities/data-import.entity';
+import { DataImportMode } from './enums/data-import-mode.enum';
 import { DataImportProcessingMode } from './enums/data-import-processing-mode.enum';
 import { DataImportStatus } from './enums/data-import-status.enum';
 import type { DuplicateImportService } from './hashing/duplicate-import.service';
 import type { CsvImportProcessor } from './processors/csv-import.processor';
 import type { ImportQueueService } from './queue/import-queue.service';
 import type { ImportFileStorage } from './storage/import-file-storage.interface';
+import { RowValidationException } from './validation/row-validation.error';
 import { ImportsService } from './imports.service';
 
 const organizationId = '00000000-0000-4000-8000-000000000001';
@@ -20,7 +23,9 @@ function entity(overrides: Partial<DataImportEntity> = {}): DataImportEntity {
     columnMapping: {},
     completedAt: null,
     createdAt: new Date('2026-09-05T00:00:00Z'),
+    arrayDelimiter: null,
     createdByUserId: null,
+    dateFormat: null,
     delimiter: ',',
     errorCode: null,
     errorMessage: null,
@@ -30,6 +35,7 @@ function entity(overrides: Partial<DataImportEntity> = {}): DataImportEntity {
     fileSizeBytes: '4',
     hasHeader: true,
     id: importId,
+    importMode: DataImportMode.Strict,
     mimeType: 'text/csv',
     organizationId,
     originalFileName: 'records.csv',
@@ -62,12 +68,16 @@ function setup() {
     save: jest.fn((value: DataImportEntity) => Promise.resolve(value)),
     update: jest.fn().mockResolvedValue({ affected: 1 }),
   };
+  const errorRepository = {
+    create: jest.fn((value: Partial<DataImportErrorEntity>) => value as DataImportErrorEntity),
+    save: jest.fn().mockResolvedValue([]),
+  };
   const processor = {
     prepare: jest.fn().mockResolvedValue({
       columnMapping: { name: 'name' },
       copyCommand: 'COPY "public"."customer_records" ("name") FROM STDIN',
     }),
-    process: jest.fn().mockResolvedValue({ processedBytes: 9, rowCount: 1 }),
+    process: jest.fn().mockResolvedValue({ processedBytes: 9, rowCount: 1, rowErrors: [] }),
   };
   const storage = { delete: jest.fn(), exists: jest.fn().mockResolvedValue(true) };
   const queue = { cancel: jest.fn(), enqueue: jest.fn().mockResolvedValue('queue-job-id') };
@@ -75,6 +85,7 @@ function setup() {
   const duplicateImport = { assertNotDuplicate: jest.fn() };
   const service = new ImportsService(
     repository as unknown as Repository<DataImportEntity>,
+    errorRepository as unknown as Repository<DataImportErrorEntity>,
     processor as unknown as CsvImportProcessor,
     storage as unknown as ImportFileStorage,
     queue as unknown as ImportQueueService,
@@ -90,7 +101,7 @@ function setup() {
     } as unknown as AppConfigService,
     duplicateImport as unknown as DuplicateImportService,
   );
-  return { audit, duplicateImport, processor, queue, repository, service, storage };
+  return { audit, duplicateImport, errorRepository, processor, queue, repository, service, storage };
 }
 
 describe('ImportsService', () => {
@@ -99,6 +110,7 @@ describe('ImportsService', () => {
     columnTypes: {},
     createTable: false,
     delimiter: ',',
+    importMode: DataImportMode.Strict,
     targetSchema: 'public',
     targetTable: 'customer_records',
   };
@@ -119,6 +131,35 @@ describe('ImportsService', () => {
     expect(result.processingMode).toBe(DataImportProcessingMode.Synchronous);
     expect(processor.process).toHaveBeenCalledTimes(1);
     expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('marks an import partially completed and persists row errors when flexible mode skips invalid rows', async () => {
+    const { errorRepository, processor, service } = setup();
+    processor.process.mockResolvedValue({
+      processedBytes: 9,
+      rowCount: 8,
+      rowErrors: [
+        { csvColumn: 'age', databaseColumn: 'age', error: "Cannot convert 'twenty' to integer", row: 3, targetType: 'integer', value: 'twenty' },
+      ],
+    });
+
+    const result = await service.create(organizationId, { ...input, importMode: DataImportMode.Flexible }, file);
+
+    expect(result.status).toBe(DataImportStatus.PartiallyCompleted);
+    expect(result.successfulRows).toBe('8');
+    expect(result.failedRows).toBe('1');
+    expect(result.totalRows).toBe('9');
+    expect(errorRepository.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        csvColumn: 'age',
+        databaseColumn: 'age',
+        errorMessage: "Cannot convert 'twenty' to integer",
+        importId: result.id,
+        rawValue: 'twenty',
+        rowNumber: 3,
+        targetType: 'integer',
+      }),
+    ]);
   });
 
   it('passes the createTable flag through to the processor when creating an import', async () => {
@@ -189,7 +230,7 @@ describe('ImportsService', () => {
     processor.process.mockImplementation(
       async (_import: DataImportEntity, _prepared: unknown, onProgress: (bytes: number) => Promise<void>) => {
         await onProgress(1_048_576);
-        return { processedBytes: 9, rowCount: 1 };
+        return { processedBytes: 9, rowCount: 1, rowErrors: [] };
       },
     );
 
@@ -232,6 +273,26 @@ describe('ImportsService', () => {
 
     expect(repository.save).toHaveBeenLastCalledWith(
       expect.objectContaining({ errorCode, status: DataImportStatus.Failed }),
+    );
+  });
+
+  it('fails a strict-mode import with a specific, actionable message on the first invalid row', async () => {
+    const { processor, repository, service } = setup();
+    repository.findOne.mockResolvedValue(entity({ status: DataImportStatus.Queued }));
+    processor.prepare.mockRejectedValue(
+      new RowValidationException([
+        { csvColumn: 'age', databaseColumn: 'age', error: "Cannot convert 'twenty' to integer", row: 24, targetType: 'integer', value: 'twenty' },
+      ]),
+    );
+
+    await expect(service.processQueued(organizationId, importId)).rejects.toThrow('CSV import failed');
+
+    expect(repository.save).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        errorCode: 'IMPORT_VALIDATION_FAILED',
+        errorMessage: "Cannot convert 'twenty' to integer",
+        status: DataImportStatus.Failed,
+      }),
     );
   });
 

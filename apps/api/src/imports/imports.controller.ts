@@ -53,10 +53,13 @@ export class ImportsController {
     const result = await this.imports.create(
       this.organizationContext.getOrganizationId(),
       {
+        arrayDelimiter: input.arrayDelimiter,
         columnMapping: parseColumnMapping(input.columnMapping),
         columnTypes: parseColumnTypes(input.columnTypes),
         createTable: input.createTable,
+        dateFormat: input.dateFormat,
         delimiter: input.delimiter,
+        importMode: input.importMode,
         targetSchema: input.targetSchema,
         targetTable: input.targetTable,
       },

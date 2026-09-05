@@ -1,4 +1,4 @@
-import { DataImportProcessingMode, DataImportStatus, type DataImportApiResponse } from '@schemaiq/types';
+import { DataImportMode, DataImportProcessingMode, DataImportStatus, type DataImportApiResponse } from '@schemaiq/types';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -36,6 +36,7 @@ const failedImport: DataImportApiResponse = {
   fileSizeBytes: '2048',
   hasHeader: true,
   id: 'import-failed',
+  importMode: DataImportMode.Strict,
   mimeType: 'text/csv',
   originalFileName: 'bad-ages.csv',
   processedBytes: '2048',
