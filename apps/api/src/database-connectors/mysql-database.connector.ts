@@ -29,7 +29,7 @@ export class MySqlDatabaseConnector implements DatabaseConnector {
       logging: false,
       multipleStatements: false,
       connectTimeout: this.config.mysql.connectTimeoutMs,
-      poolSize: this.config.mysql.poolSize,
+      poolSize: this.config.mysql.customerPoolSize,
     });
     try {
       return await dataSource.initialize();

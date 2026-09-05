@@ -28,6 +28,8 @@ The rest of the application depends only on the `CredentialProvider` interface, 
 
 They must never be sent to LLM providers or appear in logs, errors, audit entries, or analytics.
 
+Production environment configuration contains no customer MySQL host, username, password, URL, or connection-string values. Those values are either validated as separate datasource input fields and persisted without the password, or stored encrypted per datasource. Raw connection URLs are not accepted by datasource DTOs and are never persisted. `INTEGRATION_MYSQL_*` values are Docker-fixture configuration only and are not read by production services.
+
 ## Network / SSRF protection
 
 `DatasourceNetworkPolicyService` validates every DIRECT database host and every SSH bastion host before it is used for a connection attempt (create, update, test, and every pooled reuse). It:
@@ -50,7 +52,7 @@ TLS-enabled MySQL connections default to `rejectUnauthorized: true` — certific
 
 ## Bounded customer connections and resource cleanup
 
-Customer MySQL connections are never created ad hoc: `DatabaseConnectionManager` is the only owner of customer `DataSource` instances, bounded by `MYSQL_MAX_ACTIVE_DATASOURCES` with LRU eviction of idle (zero active-operation) connections, small per-datasource pools (`MYSQL_POOL_SIZE`, default 3), and a bounded `MYSQL_CONNECT_TIMEOUT_MS`. Concurrent requests for the same datasource are deduplicated to exactly one `DataSource` initialization. One shared, unref'd timer performs idle cleanup — never one timer per datasource. Every customer `DataSource` and SSH tunnel is destroyed on idle timeout, invalidation, deletion, or `OnApplicationShutdown`; nothing is left open across a restart.
+Customer MySQL connections are never created ad hoc: `DatabaseConnectionManager` is the only owner of customer `DataSource` instances, bounded by `MYSQL_MAX_ACTIVE_DATASOURCES` with LRU eviction of idle (zero active-operation) connections, small per-datasource pools (`MYSQL_CUSTOMER_POOL_SIZE`, default 3), a bounded in-flight initialization map, and a bounded `MYSQL_CONNECT_TIMEOUT_MS`. Concurrent requests for the same datasource are deduplicated to exactly one `DataSource` initialization. One shared, unref'd timer performs idle cleanup — never one timer per datasource. Every customer `DataSource` and SSH tunnel is destroyed on idle timeout, invalidation, deletion, or `OnApplicationShutdown`; nothing is left open across a restart.
 
 ## Read-only customer database user
 

@@ -75,7 +75,7 @@ function setup(maxActiveDatasources = 2) {
       maxActiveDatasources,
       idleTimeoutMs: 100,
       cleanupIntervalMs: 60_000,
-      poolSize: 3,
+      customerPoolSize: 3,
       connectTimeoutMs: 5_000,
     },
   };
@@ -125,31 +125,55 @@ describe('DatabaseConnectionManager', () => {
   it('keeps datasource registries isolated by datasource ID', async () => {
     const { connector, manager, resolver } = setup(2);
     const secondDatasourceId = crypto.randomUUID();
-    jest.mocked(resolver.resolve).mockImplementation(async (_organizationId, datasourceId) => ({
-      ...config,
-      datasourceId,
-      databaseName: datasourceId === config.datasourceId ? 'database_a' : 'database_b',
-    }));
+    jest
+      .mocked(resolver.resolve)
+      .mockResolvedValueOnce({ ...config, databaseName: 'database_a' })
+      .mockResolvedValueOnce({ ...config, databaseName: 'database_b', datasourceId: secondDatasourceId });
 
     const first = await manager.getOrCreateDataSource(config.organizationId, config.datasourceId);
     const second = await manager.getOrCreateDataSource(config.organizationId, secondDatasourceId);
     await manager.invalidateDatasource(config.datasourceId);
 
     expect(first).not.toBe(second);
-    expect(connector.createDataSource).toHaveBeenCalledTimes(2);
+    expect(connector.createDataSource).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ databaseName: 'database_a', datasourceId: config.datasourceId }),
+    );
+    expect(connector.createDataSource).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ databaseName: 'database_b', datasourceId: secondDatasourceId }),
+    );
     await expect(manager.getOrCreateDataSource(config.organizationId, secondDatasourceId)).resolves.toBe(second);
+    await manager.closeAll();
+  });
+
+  it('destroys an idle datasource through the shared cleanup pass', async () => {
+    const { created, manager } = setup();
+    await manager.getOrCreateDataSource(config.organizationId, config.datasourceId);
+
+    await manager.cleanupIdleDataSources(Date.now() + 101);
+
+    expect((created[0]?.destroy as jest.Mock | undefined)?.mock.calls).toHaveLength(1);
     await manager.closeAll();
   });
 
   it('does not evict a datasource while it has an active operation', async () => {
     const { manager, resolver } = setup(1);
     let release!: () => void;
+    let started!: () => void;
+    const operationStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
     const operation = manager.withDataSource(
       config.organizationId,
       config.datasourceId,
-      () => new Promise<void>((resolve) => (release = resolve)),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+          started();
+        }),
     );
-    await Promise.resolve();
+    await operationStarted;
     jest.mocked(resolver.resolve).mockResolvedValue({ ...config, datasourceId: crypto.randomUUID() });
 
     await expect(

@@ -16,6 +16,15 @@ SchemaIQ is a modular monolith in a pnpm workspace. `apps/web` owns the browser 
 
 `DatabaseModule` and TypeORM manage **only the internal SchemaIQ PostgreSQL database**. Nest creates one application DataSource/pool and TypeORM closes it during application shutdown. The TypeORM CLI DataSource exists only in migration processes and is never created by the running API.
 
+```text
+.env (DATABASE_*) → AppConfigService → DatabaseModule / TypeORM → SchemaIQ PostgreSQL
+
+organizationId + datasourceId → DatasourceConfigResolver → DatabaseConnectionManager
+  → dynamic MySqlDatabaseConnector / mysql2 → customer MySQL
+```
+
+`DATABASE_*` values are internal PostgreSQL configuration only. Customer hosts, usernames, and encrypted passwords are stored per datasource in SchemaIQ PostgreSQL; no production customer database credentials or connection URLs are environment configuration. `INTEGRATION_MYSQL_*` names are reserved for the Docker development fixture and are never read by application services.
+
 Redis is one Nest-managed client with connection, ping, and graceful-disconnect lifecycles. The import module adapts that client for its bounded BullMQ queue; no general cache is implemented.
 
 ## Implemented: Milestone 3.5 — PostgreSQL CSV bulk imports
@@ -70,7 +79,7 @@ Customer MySQL  ── DIRECT (TLS) or SSH_TUNNEL (via SshTunnelService / ssh2)
 
 `DatasourceModule` (`datasources/`) owns datasource metadata (`DatasourceEntity`, `DatasourceSshConfigEntity`) through the **internal** TypeORM DataSource, the same PostgreSQL connection used by Milestone 0 — datasource metadata is ordinary internal application data. Encrypted secrets (`DatasourceSecretEntity`, one encrypted row per `DatasourceSecretType`: `DATABASE_PASSWORD`, `SSH_PASSWORD`, `SSH_PRIVATE_KEY`, `SSH_PRIVATE_KEY_PASSPHRASE`) live in the same internal database but are reached only through the `CredentialProvider` interface, never directly.
 
-Customer MySQL connections never use the internal TypeORM DataSource or `TypeOrmModule.forRoot()`/`forRootAsync()`. `DatabaseConnectionManager` is the sole owner of customer `DataSource` instances: it lazily creates them via `MySqlDatabaseConnector.createDataSource()` (`new DataSource({...}).initialize()`), reuses them from a bounded registry (`MYSQL_MAX_ACTIVE_DATASOURCES`, LRU-evicted, one shared idle-cleanup timer), deduplicates concurrent initialization for the same datasource via an in-flight promise map, and destroys every customer `DataSource` (and any SSH tunnel) on idle timeout, invalidation, datasource deletion, or `OnApplicationShutdown`. Customer `DataSource` options are always `entities: []`, `synchronize: false`, `migrationsRun: false`, `logging: false` — SchemaIQ never reads or writes customer schema in this milestone, only `SELECT 1`.
+Customer MySQL connections never use the internal TypeORM DataSource or `TypeOrmModule.forRoot()`/`forRootAsync()`. `DatabaseConnectionManager` is the sole owner of customer `DataSource` instances: it lazily creates them via `MySqlDatabaseConnector.createDataSource()` (`new DataSource({...}).initialize()`), reuses them from a bounded registry (`MYSQL_MAX_ACTIVE_DATASOURCES`, LRU-evicted, one shared idle-cleanup timer), bounds concurrent initialization, deduplicates concurrent initialization for the same datasource via an in-flight promise map, and destroys every customer `DataSource` (and any SSH tunnel) on idle timeout, invalidation, datasource deletion, or `OnApplicationShutdown`. Customer `DataSource` options are always `entities: []`, `synchronize: false`, `migrationsRun: false`, `logging: false` — SchemaIQ never reads or writes customer schema in this milestone, only `SELECT 1`.
 
 For `SSH_TUNNEL`-mode datasources, `SshTunnelService` (backed by the `ssh2` library) opens a loopback-only (`127.0.0.1`), ephemeral-port local forwarding tunnel to the customer's bastion host; the customer `DataSource` then connects through that local endpoint instead of the remote host directly. Tunnels are reused alongside their `DataSource` and closed together.
 

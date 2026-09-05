@@ -25,6 +25,8 @@ const REDACTED_PATHS = [
   'req.body.iv',
   'req.body.authTag',
   'req.body.connectionString',
+  'req.body.connectionUrl',
+  'req.body.decryptedPassword',
   'res.headers.set-cookie',
   'password',
   'authorization',
@@ -41,6 +43,8 @@ const REDACTED_PATHS = [
   'authTag',
   'DATASOURCE_ENCRYPTION_KEY',
   'connectionString',
+  'connectionUrl',
+  'decryptedPassword',
 ];
 
 @Module({

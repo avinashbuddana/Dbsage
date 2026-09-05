@@ -28,6 +28,7 @@ Future work includes schema introspection, relationship discovery, natural-langu
 - Customer MySQL connections MUST go through `DatabaseConnectionManager`. Never create a customer `DataSource` directly from a controller, another service, or a one-off script.
 - Never dynamically register a customer database through `TypeOrmModule.forRoot()`/`forRootAsync()`. Customer `DataSource` instances are always `new DataSource({...})` + `.initialize()`/`.destroy()`.
 - Never cache decrypted credentials. Decrypt only immediately before building a connection; never attach plaintext to long-lived objects, logs, or Redis.
+- Never introduce static production customer database credentials into `.env`; every customer operation begins with an organization-scoped `datasourceId`.
 - Never expose datasource secrets (password, SSH password/private key/passphrase, `encryptedValue`, `iv`, `authTag`) through any controller, DTO, or API response.
 - Always close customer `DataSource` and SSH tunnel resources through `DatabaseConnectionManager`'s lifecycle (invalidate/idle-cleanup/shutdown) — never leave a customer connection or tunnel open outside its managed lifecycle.
 

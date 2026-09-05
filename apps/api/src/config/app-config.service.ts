@@ -38,7 +38,7 @@ export class AppConfigService {
     maxActiveDatasources: number;
     idleTimeoutMs: number;
     cleanupIntervalMs: number;
-    poolSize: number;
+    customerPoolSize: number;
     connectTimeoutMs: number;
   }> {
     return {
@@ -49,7 +49,7 @@ export class AppConfigService {
       cleanupIntervalMs: this.config.getOrThrow('MYSQL_DATASOURCE_CLEANUP_INTERVAL_MS', {
         infer: true,
       }),
-      poolSize: this.config.getOrThrow('MYSQL_POOL_SIZE', { infer: true }),
+      customerPoolSize: this.config.getOrThrow('MYSQL_CUSTOMER_POOL_SIZE', { infer: true }),
       connectTimeoutMs: this.config.getOrThrow('MYSQL_CONNECT_TIMEOUT_MS', { infer: true }),
     };
   }

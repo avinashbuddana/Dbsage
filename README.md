@@ -110,6 +110,10 @@ CI runs install with the frozen lockfile, then lint, typecheck, test, and build.
 | `REDIS_PASSWORD`    | Optional Redis password; never logged                                   |
 | `JWT_SECRET`        | Reserved validated secret; auth is not implemented                      |
 | `ENCRYPTION_KEY`    | Reserved validated secret; credential storage is not implemented        |
+| `DATASOURCE_ENCRYPTION_KEY` | AES-256-GCM key for datasource-scoped credentials; never logged |
+| `MYSQL_CUSTOMER_POOL_SIZE` | Per-customer dynamic MySQL pool limit; not a customer credential |
+| `MYSQL_MAX_ACTIVE_DATASOURCES` | Maximum managed customer datasource connections |
+| `INTEGRATION_MYSQL_*` | Docker integration-fixture only; never read by production services |
 | `CORS_ORIGIN`       | Comma-separated allowed web origins; wildcard is rejected in production |
 | `LOG_LEVEL`         | Pino level: fatal, error, warn, info, debug, or trace                   |
 

@@ -77,7 +77,7 @@ const environmentSchema = z
       .int()
       .min(1_000)
       .default(60_000),
-    MYSQL_POOL_SIZE: z.coerce.number().int().positive().max(10).default(3),
+    MYSQL_CUSTOMER_POOL_SIZE: z.coerce.number().int().positive().max(10).default(3),
     MYSQL_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(5_000),
     ALLOW_LOCAL_DATASOURCES: booleanFromString.default(false),
     CSV_IMPORT_MAX_FILE_SIZE_BYTES: z.coerce

@@ -113,7 +113,10 @@ export class DatasourcesService {
   }
 
   async testSaved(organizationId: string, datasourceId: string): Promise<ConnectionTestResult> {
-    await this.getEntity(organizationId, datasourceId);
+    const datasource = await this.getEntity(organizationId, datasourceId);
+    if (datasource.status === DatasourceStatus.Disabled) {
+      throw new DatasourceConnectionError('DATASOURCE_DISABLED', 'Datasource is disabled');
+    }
     try {
       const result = await this.connectionManager.testDatasource(organizationId, datasourceId);
       await this.datasourceRepository.update(

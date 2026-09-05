@@ -108,7 +108,7 @@
 
 - **Status:** Accepted
 - **Context:** Naively pooling every customer datasource (e.g. 10 connections × 100 customers) risks exhausting database and file-descriptor limits.
-- **Decision:** `DatabaseConnectionManager` creates customer `DataSource`/SSH-tunnel instances lazily on first use, caps total active instances at `MYSQL_MAX_ACTIVE_DATASOURCES`, uses small per-datasource pools (`MYSQL_POOL_SIZE`, default 3), evicts idle instances via one shared cleanup timer, and deduplicates concurrent initialization for the same datasource so N simultaneous requests create exactly one `DataSource`.
+- **Decision:** `DatabaseConnectionManager` creates customer `DataSource`/SSH-tunnel instances lazily on first use, caps total active instances at `MYSQL_MAX_ACTIVE_DATASOURCES`, uses small per-datasource pools (`MYSQL_CUSTOMER_POOL_SIZE`, default 3), evicts idle instances via one shared cleanup timer, bounds in-flight initialization, and deduplicates concurrent initialization for the same datasource so N simultaneous requests create exactly one `DataSource`.
 - **Reason:** Bounded, lazy, deduplicated pooling keeps SchemaIQ's total customer connection footprint predictable regardless of tenant count.
 - **Consequences:** A request for a new datasource at capacity either evicts a safe (idle, zero-active-operations) LRU entry or fails with a typed `DATASOURCE_RESOURCE_LIMIT` error — it never silently exceeds the configured maximum.
 
@@ -135,3 +135,11 @@
 - **Decision:** One import maps to one bounded BullMQ job that streams a stored file; `ImportFileStorage` hides the initial local implementation.
 - **Reason:** Jobs remain small, COPY remains transactional, and object storage can replace local disk without changing import processing.
 - **Consequences:** Local storage is limited to a single shared volume; multi-machine production deployments need S3-compatible storage.
+
+## ADR-018 — Customer databases are dynamic datasource records, never static environment configuration
+
+- **Status:** Accepted; implemented in Milestone 1
+- **Context:** Static customer database environment variables couple deployments to one customer and make credential rotation or adding a datasource require a restart.
+- **Decision:** `DATABASE_*` configures only SchemaIQ's internal PostgreSQL database. Each customer MySQL connection starts with an organization-scoped datasource record, resolves its encrypted credential through `CredentialProvider`, and is created by `DatabaseConnectionManager`. `INTEGRATION_MYSQL_*` is reserved for the Docker test fixture and cannot be read by application services.
+- **Reason:** Datasource-scoped, encrypted configuration supports tenant isolation and removes customer credentials from process configuration.
+- **Consequences:** Production configuration never accepts customer MySQL host, username, password, or connection URL values. Raw database URLs are rejected at the DTO boundary and never persisted.

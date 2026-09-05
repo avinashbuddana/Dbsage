@@ -12,6 +12,7 @@ import { DatasourceEntity } from '../datasources/entities/datasource.entity';
 import {
   DatasourceConnectionMode,
   DatasourceSecretType,
+  DatasourceStatus,
   SshAuthenticationType,
 } from '../datasources/enums/datasource.enums';
 import { DatasourceNetworkPolicyService } from '../network/datasource-network-policy.service';
@@ -36,6 +37,9 @@ export class DatasourceConfigResolver {
       where: { id: datasourceId, organizationId },
     });
     if (!datasource) throw this.unavailable();
+    if (datasource.status === DatasourceStatus.Disabled) {
+      throw new DatasourceConnectionError('DATASOURCE_DISABLED', 'Datasource is disabled');
+    }
     const secrets = await this.credentials.getCredentials(datasourceId);
     const password = secrets[DatasourceSecretType.DatabasePassword];
     if (!password) throw this.unavailable();

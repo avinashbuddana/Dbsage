@@ -49,6 +49,7 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
   async getOrCreateDataSource(organizationId: string, datasourceId: string): Promise<DataSource> {
     const entry = await this.acquire(organizationId, datasourceId);
     entry.activeOperations -= 1;
+    entry.lastUsedAt = Date.now();
     return entry.dataSource;
   }
 
@@ -99,6 +100,13 @@ export class DatabaseConnectionManager implements OnModuleInit, OnApplicationShu
       entry.activeOperations += 1;
       entry.lastUsedAt = Date.now();
       return entry;
+    }
+
+    if (this.inFlight.size >= this.config.mysql.maxActiveDatasources) {
+      throw new DatasourceConnectionError(
+        'DATASOURCE_RESOURCE_LIMIT',
+        'Customer database connection limit reached',
+      );
     }
 
     const initialization = Promise.resolve().then(() =>
