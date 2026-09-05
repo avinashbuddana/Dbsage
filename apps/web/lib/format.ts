@@ -10,7 +10,7 @@ export function formatBytes(value: string | number): string {
     unitIndex += 1;
   }
   const precision = unitIndex === 0 ? 0 : 1;
-  return `${size.toFixed(precision)} ${BYTE_UNITS[unitIndex]}`;
+  return `${size.toFixed(precision)} ${BYTE_UNITS[unitIndex] ?? 'B'}`;
 }
 
 export function formatRowCount(value: string): string {
@@ -29,7 +29,7 @@ export function formatDuration(startedAt: string | null, endedAt: string | null)
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
+  if (hours > 0) return `${String(hours)}h ${String(minutes)}m`;
+  if (minutes > 0) return `${String(minutes)}m ${String(seconds)}s`;
+  return `${String(seconds)}s`;
 }
