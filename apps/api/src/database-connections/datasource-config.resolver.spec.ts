@@ -10,6 +10,7 @@ import {
   DatasourceType,
 } from '../datasources/enums/datasource.enums';
 import type { DatasourceNetworkPolicyService } from '../network/datasource-network-policy.service';
+import { DatasourceConnectionError } from './datasource-connection.error';
 import { DatasourceConfigResolver } from './datasource-config.resolver';
 
 describe('DatasourceConfigResolver', () => {
@@ -55,5 +56,26 @@ describe('DatasourceConfigResolver', () => {
     expect(repository.findOne).toHaveBeenCalledWith({
       where: { id: datasourceId, organizationId },
     });
+  });
+
+  it('does not decrypt credentials for a disabled datasource', async () => {
+    const datasource = Object.assign(new DatasourceEntity(), {
+      id: crypto.randomUUID(),
+      organizationId: crypto.randomUUID(),
+      status: DatasourceStatus.Disabled,
+    });
+    const repository = { findOne: jest.fn().mockResolvedValue(datasource) };
+    const credentials = { getCredentials: jest.fn() };
+    const resolver = new DatasourceConfigResolver(
+      repository as unknown as Repository<DatasourceEntity>,
+      {} as Repository<DatasourceSshConfigEntity>,
+      credentials as unknown as CredentialProvider,
+      {} as DatasourceNetworkPolicyService,
+    );
+
+    await expect(resolver.resolve(datasource.organizationId, datasource.id)).rejects.toEqual(
+      new DatasourceConnectionError('DATASOURCE_DISABLED', 'Datasource is disabled'),
+    );
+    expect(credentials.getCredentials).not.toHaveBeenCalled();
   });
 });

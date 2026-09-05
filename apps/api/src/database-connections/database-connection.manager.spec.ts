@@ -95,16 +95,49 @@ function setup(maxActiveDatasources = 2) {
 describe('DatabaseConnectionManager', () => {
   afterEach(() => jest.useRealTimers());
 
-  it('deduplicates concurrent initialization and reuses one datasource', async () => {
+  it('deduplicates twenty simultaneous requests for one datasource', async () => {
     const { connector, manager } = setup();
 
-    const [first, second] = await Promise.all([
-      manager.getOrCreateDataSource(config.organizationId, config.datasourceId),
-      manager.getOrCreateDataSource(config.organizationId, config.datasourceId),
-    ]);
+    const dataSources = await Promise.all(
+      Array.from({ length: 20 }, () =>
+        manager.getOrCreateDataSource(config.organizationId, config.datasourceId),
+      ),
+    );
 
-    expect(first).toBe(second);
+    expect(new Set(dataSources).size).toBe(1);
     expect(connector.createDataSource).toHaveBeenCalledTimes(1);
+    await manager.closeAll();
+  });
+
+  it('does not start unbounded concurrent initialization for distinct datasources', async () => {
+    const { manager, resolver } = setup(1);
+    const secondDatasourceId = crypto.randomUUID();
+
+    const first = manager.getOrCreateDataSource(config.organizationId, config.datasourceId);
+    await expect(manager.getOrCreateDataSource(config.organizationId, secondDatasourceId)).rejects.toMatchObject({
+      code: 'DATASOURCE_RESOURCE_LIMIT',
+    });
+    await first;
+    expect(resolver.resolve).toHaveBeenCalledTimes(1);
+    await manager.closeAll();
+  });
+
+  it('keeps datasource registries isolated by datasource ID', async () => {
+    const { connector, manager, resolver } = setup(2);
+    const secondDatasourceId = crypto.randomUUID();
+    jest.mocked(resolver.resolve).mockImplementation(async (_organizationId, datasourceId) => ({
+      ...config,
+      datasourceId,
+      databaseName: datasourceId === config.datasourceId ? 'database_a' : 'database_b',
+    }));
+
+    const first = await manager.getOrCreateDataSource(config.organizationId, config.datasourceId);
+    const second = await manager.getOrCreateDataSource(config.organizationId, secondDatasourceId);
+    await manager.invalidateDatasource(config.datasourceId);
+
+    expect(first).not.toBe(second);
+    expect(connector.createDataSource).toHaveBeenCalledTimes(2);
+    await expect(manager.getOrCreateDataSource(config.organizationId, secondDatasourceId)).resolves.toBe(second);
     await manager.closeAll();
   });
 

@@ -33,6 +33,7 @@ function setup() {
   const datasourceRepository = {
     findOne: jest.fn(),
     find: jest.fn(),
+    update: jest.fn(),
   };
   const sshRepository = {};
   const transactionalDatasourceRepository = {
@@ -77,6 +78,7 @@ function setup() {
       latencyMs: 5,
       databaseType: DatasourceType.MySql,
     }),
+    testDatasource: jest.fn(),
     invalidateDatasource: jest.fn(),
   };
   const networkPolicy = {
@@ -158,5 +160,25 @@ describe('DatasourcesService', () => {
         status: DatasourceStatus.Active,
       } as CreateDatasourceDto),
     ).rejects.toThrow('Unsupported connection mode');
+  });
+
+  it('leaves a disabled datasource disabled when a saved connection test is rejected', async () => {
+    const { connectionManager, datasourceRepository, service } = setup();
+    const datasourceId = crypto.randomUUID();
+    jest.mocked(datasourceRepository.findOne).mockResolvedValue(
+      Object.assign(new DatasourceEntity(), {
+        id: datasourceId,
+        organizationId,
+        status: DatasourceStatus.Disabled,
+      }),
+    );
+    jest.mocked(connectionManager.testDatasource).mockRejectedValue(
+      new DatasourceConnectionError('DATASOURCE_DISABLED', 'Datasource is disabled'),
+    );
+
+    await expect(service.testSaved(organizationId, datasourceId)).rejects.toMatchObject({
+      code: 'DATASOURCE_DISABLED',
+    });
+    expect(datasourceRepository.update).not.toHaveBeenCalled();
   });
 });

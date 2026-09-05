@@ -19,7 +19,7 @@ const validEnvironment = {
   MYSQL_MAX_ACTIVE_DATASOURCES: '10',
   MYSQL_DATASOURCE_IDLE_TIMEOUT_MS: '300000',
   MYSQL_DATASOURCE_CLEANUP_INTERVAL_MS: '60000',
-  MYSQL_POOL_SIZE: '3',
+  MYSQL_CUSTOMER_POOL_SIZE: '3',
   MYSQL_CONNECT_TIMEOUT_MS: '5000',
   ALLOW_LOCAL_DATASOURCES: 'false',
   CORS_ORIGIN: 'http://localhost:3000',
@@ -33,7 +33,7 @@ describe('validateEnvironment', () => {
     expect(environment.API_PORT).toBe(3001);
     expect(environment.DATABASE_PORT).toBe(5432);
     expect(environment.DATABASE_SSL).toBe(false);
-    expect(environment.MYSQL_POOL_SIZE).toBe(3);
+    expect(environment).toMatchObject({ MYSQL_CUSTOMER_POOL_SIZE: 3 });
     expect(environment.ALLOW_LOCAL_DATASOURCES).toBe(false);
   });
 
@@ -89,5 +89,15 @@ describe('validateEnvironment', () => {
         DATASOURCE_ENCRYPTION_KEY: Buffer.alloc(31).toString('base64'),
       }),
     ).toThrow('DATASOURCE_ENCRYPTION_KEY');
+  });
+
+  it('does not require static customer MySQL credentials in production', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'production',
+        CORS_ORIGIN: 'https://app.schemaiq.example',
+      }),
+    ).not.toThrow();
   });
 });

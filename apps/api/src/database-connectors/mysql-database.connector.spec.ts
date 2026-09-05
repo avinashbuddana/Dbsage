@@ -20,7 +20,7 @@ const config: CustomerDatabaseConnectionConfig = {
 
 describe('MySqlDatabaseConnector', () => {
   const appConfig = {
-    mysql: { connectTimeoutMs: 4_000, poolSize: 3 },
+    mysql: { connectTimeoutMs: 4_000, customerPoolSize: 3 },
   } as unknown as AppConfigService;
 
   afterEach(() => jest.restoreAllMocks());
