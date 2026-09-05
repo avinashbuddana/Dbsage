@@ -6,6 +6,7 @@ import type { AppConfigService } from '../config/app-config.service';
 import { DataImportEntity } from './entities/data-import.entity';
 import { DataImportProcessingMode } from './enums/data-import-processing-mode.enum';
 import { DataImportStatus } from './enums/data-import-status.enum';
+import type { DuplicateImportService } from './hashing/duplicate-import.service';
 import type { CsvImportProcessor } from './processors/csv-import.processor';
 import type { ImportQueueService } from './queue/import-queue.service';
 import type { ImportFileStorage } from './storage/import-file-storage.interface';
@@ -25,6 +26,7 @@ function entity(overrides: Partial<DataImportEntity> = {}): DataImportEntity {
     errorMessage: null,
     failedRows: '0',
     fileDeletedAt: null,
+    fileHash: 'abc123',
     fileSizeBytes: '4',
     hasHeader: true,
     id: importId,
@@ -70,6 +72,7 @@ function setup() {
   const storage = { delete: jest.fn(), exists: jest.fn().mockResolvedValue(true) };
   const queue = { cancel: jest.fn(), enqueue: jest.fn().mockResolvedValue('queue-job-id') };
   const audit = { record: jest.fn() };
+  const duplicateImport = { assertNotDuplicate: jest.fn() };
   const service = new ImportsService(
     repository as unknown as Repository<DataImportEntity>,
     processor as unknown as CsvImportProcessor,
@@ -85,13 +88,22 @@ function setup() {
         queueThresholdBytes: 5,
       },
     } as unknown as AppConfigService,
+    duplicateImport as unknown as DuplicateImportService,
   );
-  return { audit, processor, queue, repository, service, storage };
+  return { audit, duplicateImport, processor, queue, repository, service, storage };
 }
 
 describe('ImportsService', () => {
-  const input = { columnMapping: {}, delimiter: ',', targetSchema: 'public', targetTable: 'customer_records' };
+  const input = {
+    columnMapping: {},
+    columnTypes: {},
+    createTable: false,
+    delimiter: ',',
+    targetSchema: 'public',
+    targetTable: 'customer_records',
+  };
   const file = {
+    fileHash: 'abc123',
     fileReference: '00000000-0000-4000-8000-000000000003.csv',
     mimeType: 'text/csv',
     originalFileName: 'records.csv',
@@ -107,6 +119,37 @@ describe('ImportsService', () => {
     expect(result.processingMode).toBe(DataImportProcessingMode.Synchronous);
     expect(processor.process).toHaveBeenCalledTimes(1);
     expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('passes the createTable flag through to the processor when creating an import', async () => {
+    const { processor, service } = setup();
+
+    await service.create(organizationId, { ...input, columnTypes: { created_at: 'timestamp' }, createTable: true }, file);
+
+    expect(processor.prepare).toHaveBeenCalledWith(expect.anything(), true, { created_at: 'timestamp' });
+  });
+
+  it('checks for a duplicate before creating any import row', async () => {
+    const { duplicateImport, repository, service } = setup();
+    duplicateImport.assertNotDuplicate.mockRejectedValue(new Error('duplicate'));
+
+    await expect(service.create(organizationId, input, file)).rejects.toThrow('duplicate');
+
+    expect(duplicateImport.assertNotDuplicate).toHaveBeenCalledWith(organizationId, 'public', 'customer_records', 'abc123');
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it('re-checks for a duplicate when a concurrent insert wins the unique-index race', async () => {
+    const { duplicateImport, repository, service } = setup();
+    const uniqueViolation: { code: string } = { code: '23505' };
+    repository.save.mockRejectedValueOnce(uniqueViolation);
+    duplicateImport.assertNotDuplicate
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('duplicate after race'));
+
+    await expect(service.create(organizationId, input, file)).rejects.toThrow('duplicate after race');
+
+    expect(duplicateImport.assertNotDuplicate).toHaveBeenCalledTimes(2);
   });
 
   it('queues a large import with only its IDs and never processes it in the request', async () => {
@@ -214,6 +257,16 @@ describe('ImportsService', () => {
         status: DataImportStatus.Failed,
       }),
     );
+  });
+
+  it('allows retrying a cancelled import that never inserted any rows', async () => {
+    const { queue, repository, service } = setup();
+    repository.findOne.mockResolvedValue(entity({ status: DataImportStatus.Cancelled }));
+
+    const result = await service.retry(organizationId, importId);
+
+    expect(result.status).toBe(DataImportStatus.Queued);
+    expect(queue.enqueue).toHaveBeenCalledWith(importId, organizationId);
   });
 
   it('persists a failed state before returning queue unavailability to a create request', async () => {

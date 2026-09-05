@@ -15,6 +15,7 @@ import { DataImportEntity } from './entities/data-import.entity';
 import { DataImportErrorCode } from './enums/data-import-error-code.enum';
 import { DataImportProcessingMode } from './enums/data-import-processing-mode.enum';
 import { DataImportStatus } from './enums/data-import-status.enum';
+import { DuplicateImportService } from './hashing/duplicate-import.service';
 import { canTransitionDataImportStatus } from './import-status';
 import type {
   CreateCsvImportInput,
@@ -42,6 +43,7 @@ export class ImportsService {
     private readonly queue: ImportQueueService,
     private readonly audit: AuditService,
     private readonly config: AppConfigService,
+    private readonly duplicateImport: DuplicateImportService,
   ) {}
 
   async create(
@@ -49,38 +51,49 @@ export class ImportsService {
     input: CreateCsvImportInput,
     file: UploadedCsvFile,
   ): Promise<DataImportResponse> {
-    let importEntity = await this.repository.save(
-      this.repository.create({
-        columnMapping: input.columnMapping,
-        completedAt: null,
-        createdByUserId: null,
-        delimiter: input.delimiter,
-        errorCode: null,
-        errorMessage: null,
-        failedRows: '0',
-        fileDeletedAt: null,
-        fileSizeBytes: String(file.sizeBytes),
-        hasHeader: true,
-        mimeType: file.mimeType,
-        organizationId,
-        originalFileName: file.originalFileName,
-        processedBytes: '0',
-        processedRows: '0',
-        processingMode:
-          file.sizeBytes > this.config.csvImport.queueThresholdBytes
-            ? DataImportProcessingMode.Queued
-            : DataImportProcessingMode.Synchronous,
-        progressPercent: 0,
-        queueJobId: null,
-        startedAt: null,
-        status: DataImportStatus.Uploaded,
-        storedFileReference: file.fileReference,
-        successfulRows: '0',
-        targetSchema: input.targetSchema,
-        targetTable: input.targetTable,
-        totalRows: null,
-      }),
-    );
+    await this.duplicateImport.assertNotDuplicate(organizationId, input.targetSchema, input.targetTable, file.fileHash);
+
+    let importEntity: DataImportEntity;
+    try {
+      importEntity = await this.repository.save(
+        this.repository.create({
+          columnMapping: input.columnMapping,
+          completedAt: null,
+          createdByUserId: null,
+          delimiter: input.delimiter,
+          errorCode: null,
+          errorMessage: null,
+          failedRows: '0',
+          fileDeletedAt: null,
+          fileHash: file.fileHash,
+          fileSizeBytes: String(file.sizeBytes),
+          hasHeader: true,
+          mimeType: file.mimeType,
+          organizationId,
+          originalFileName: file.originalFileName,
+          processedBytes: '0',
+          processedRows: '0',
+          processingMode:
+            file.sizeBytes > this.config.csvImport.queueThresholdBytes
+              ? DataImportProcessingMode.Queued
+              : DataImportProcessingMode.Synchronous,
+          progressPercent: 0,
+          queueJobId: null,
+          startedAt: null,
+          status: DataImportStatus.Uploaded,
+          storedFileReference: file.fileReference,
+          successfulRows: '0',
+          targetSchema: input.targetSchema,
+          targetTable: input.targetTable,
+          totalRows: null,
+        }),
+      );
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        await this.duplicateImport.assertNotDuplicate(organizationId, input.targetSchema, input.targetTable, file.fileHash);
+      }
+      throw error;
+    }
     await this.audit.record(organizationId, AuditEvent.CsvImportUploaded, {
       fileSizeBytes: importEntity.fileSizeBytes,
       importId: importEntity.id,
@@ -90,7 +103,7 @@ export class ImportsService {
 
     try {
       importEntity = await this.transition(importEntity, DataImportStatus.Validating);
-      const prepared = await this.processor.prepare(importEntity);
+      const prepared = await this.processor.prepare(importEntity, input.createTable, input.columnTypes);
       importEntity.columnMapping = prepared.columnMapping;
       if (importEntity.processingMode === DataImportProcessingMode.Queued) {
         importEntity = await this.transition(importEntity, DataImportStatus.Queued);
@@ -140,14 +153,14 @@ export class ImportsService {
 
   async retry(organizationId: string, importId: string): Promise<DataImportResponse> {
     let importEntity = await this.getEntity(organizationId, importId);
-    if (importEntity.status !== DataImportStatus.Failed) {
-      throw new ConflictException('Only failed imports can be retried');
+    if (importEntity.status !== DataImportStatus.Failed && importEntity.status !== DataImportStatus.Cancelled) {
+      throw new ConflictException('Only failed or cancelled imports can be retried');
     }
     if (!(await this.storage.exists(importEntity.storedFileReference))) {
       throw new NotFoundException('Import file is no longer available for retry');
     }
     const queued = await this.repository.update(
-      { id: importId, organizationId, status: DataImportStatus.Failed },
+      { id: importId, organizationId, status: importEntity.status },
       {
         completedAt: null,
         errorCode: null,
@@ -362,6 +375,10 @@ export class ImportsService {
       importId: importEntity.id,
     });
     return failed;
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && 'code' in error && error.code === '23505';
   }
 
   private async getEntity(organizationId: string, importId: string): Promise<DataImportEntity> {
