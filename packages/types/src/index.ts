@@ -16,6 +16,7 @@ export enum DataImportStatus {
   Queued = 'QUEUED',
   Processing = 'PROCESSING',
   Completed = 'COMPLETED',
+  PartiallyCompleted = 'PARTIALLY_COMPLETED',
   Failed = 'FAILED',
   Cancelled = 'CANCELLED',
 }
@@ -23,6 +24,11 @@ export enum DataImportStatus {
 export enum DataImportProcessingMode {
   Synchronous = 'SYNCHRONOUS',
   Queued = 'QUEUED',
+}
+
+export enum DataImportMode {
+  Strict = 'STRICT',
+  Flexible = 'FLEXIBLE',
 }
 
 export enum DataImportErrorCode {
@@ -39,6 +45,7 @@ export enum DataImportErrorCode {
   ImportTargetNotAllowed = 'IMPORT_TARGET_NOT_ALLOWED',
   ImportTimeout = 'IMPORT_TIMEOUT',
   ImportInternalError = 'IMPORT_INTERNAL_ERROR',
+  ImportValidationFailed = 'IMPORT_VALIDATION_FAILED',
 }
 
 export interface DataImportApiResponse {
@@ -50,6 +57,7 @@ export interface DataImportApiResponse {
   targetTable: string;
   status: DataImportStatus;
   processingMode: DataImportProcessingMode;
+  importMode: DataImportMode;
   delimiter: string;
   hasHeader: boolean;
   totalRows: string | null;

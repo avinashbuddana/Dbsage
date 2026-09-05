@@ -29,6 +29,7 @@ describe('PostgresTableMetadataService', () => {
       .mockResolvedValueOnce({
         rows: [
           {
+            character_maximum_length: null,
             column_name: 'id',
             data_type: 'uuid',
             has_default: true,
@@ -37,6 +38,7 @@ describe('PostgresTableMetadataService', () => {
             is_nullable: false,
           },
           {
+            character_maximum_length: null,
             column_name: 'name',
             data_type: 'text',
             has_default: false,

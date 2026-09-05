@@ -10,6 +10,7 @@ const allowedTransitions: Readonly<Record<DataImportStatus, readonly DataImportS
   [DataImportStatus.Queued]: [DataImportStatus.Processing, DataImportStatus.Failed, DataImportStatus.Cancelled],
   [DataImportStatus.Processing]: [DataImportStatus.Completed, DataImportStatus.Failed],
   [DataImportStatus.Completed]: [],
+  [DataImportStatus.PartiallyCompleted]: [],
   [DataImportStatus.Failed]: [DataImportStatus.Queued],
   [DataImportStatus.Cancelled]: [DataImportStatus.Queued],
 };

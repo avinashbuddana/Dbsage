@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { CsvImportUploadInterceptor } from './csv-import-upload.interceptor';
+import { DataImportErrorEntity } from './entities/data-import-error.entity';
 import { DataImportEntity } from './entities/data-import.entity';
 import { DuplicateImportService } from './hashing/duplicate-import.service';
 import { FileHashService } from './hashing/file-hash.service';
@@ -20,11 +21,13 @@ import { ImportQueueService } from './queue/import-queue.service';
 import { ImportWorkerService } from './queue/import-worker.service';
 import { IMPORT_FILE_STORAGE } from './storage/import-file-storage.interface';
 import { LocalImportFileStorage } from './storage/local-import-file-storage.service';
+import { DatatypeTransformerService } from './transformation/datatype-transformer.service';
+import { ImportValidatorService } from './validation/import-validator.service';
 import { CsvHeaderValidator } from './validators/csv-header.validator';
 import { PostgresColumnMappingValidator } from './validators/postgres-column-mapping.validator';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DataImportEntity]), AuditModule, AuthModule],
+  imports: [TypeOrmModule.forFeature([DataImportEntity, DataImportErrorEntity]), AuditModule, AuthModule],
   controllers: [ImportsController],
   providers: [
     DuplicateImportService,
@@ -39,6 +42,8 @@ import { PostgresColumnMappingValidator } from './validators/postgres-column-map
     PostgresTableMetadataService,
     PostgresCopyService,
     CsvImportProcessor,
+    DatatypeTransformerService,
+    ImportValidatorService,
     ImportQueueService,
     ImportsService,
     ImportWorkerService,

@@ -7,6 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+import { DataImportMode } from '../enums/data-import-mode.enum';
 import { DataImportProcessingMode } from '../enums/data-import-processing-mode.enum';
 import { DataImportStatus } from '../enums/data-import-status.enum';
 
@@ -66,6 +67,21 @@ export class DataImportEntity {
 
   @Column({ type: 'char', length: 1 })
   delimiter!: string;
+
+  @Column({
+    name: 'import_mode',
+    type: 'enum',
+    enum: DataImportMode,
+    enumName: 'data_import_mode',
+    default: DataImportMode.Strict,
+  })
+  importMode!: DataImportMode;
+
+  @Column({ name: 'date_format', type: 'varchar', length: 20, nullable: true })
+  dateFormat!: string | null;
+
+  @Column({ name: 'array_delimiter', type: 'varchar', length: 5, nullable: true })
+  arrayDelimiter!: string | null;
 
   @Column({ name: 'has_header', type: 'boolean', default: true })
   hasHeader!: boolean;

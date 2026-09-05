@@ -7,6 +7,7 @@ import type { Environment } from '../config/environment';
 import { DatasourceSecretEntity } from '../credentials/datasource-secret.entity';
 import { DatasourceSshConfigEntity } from '../datasources/entities/datasource-ssh-config.entity';
 import { DatasourceEntity } from '../datasources/entities/datasource.entity';
+import { DataImportErrorEntity } from '../imports/entities/data-import-error.entity';
 import { DataImportEntity } from '../imports/entities/data-import.entity';
 import { OrganizationMemberEntity } from '../organizations/organization-member.entity';
 import { OrganizationEntity } from '../organizations/organization.entity';
@@ -16,6 +17,8 @@ import { SecureMysqlDatasources1788393600000 } from './migrations/1788393600000-
 import { PostgreSqlCsvImports1788480000000 } from './migrations/1788480000000-postgresql-csv-imports';
 import { CsvImportDuplicateProtection1788500000000 } from './migrations/1788500000000-csv-import-duplicate-protection';
 import { CsvImportUpdatedAtTrigger1788510000000 } from './migrations/1788510000000-csv-import-updated-at-trigger';
+import { CsvImportPartiallyCompletedStatus1788520000000 } from './migrations/1788520000000-csv-import-partially-completed-status';
+import { CsvImportTransformationEngine1788530000000 } from './migrations/1788530000000-csv-import-transformation-engine';
 
 const entities = [
   UserEntity,
@@ -26,6 +29,7 @@ const entities = [
   DatasourceSshConfigEntity,
   DatasourceSecretEntity,
   DataImportEntity,
+  DataImportErrorEntity,
 ];
 const migrations = [
   InitialFoundation1725321600000,
@@ -33,6 +37,8 @@ const migrations = [
   PostgreSqlCsvImports1788480000000,
   CsvImportDuplicateProtection1788500000000,
   CsvImportUpdatedAtTrigger1788510000000,
+  CsvImportPartiallyCompletedStatus1788520000000,
+  CsvImportTransformationEngine1788530000000,
 ];
 
 interface InternalDatabaseConfig {

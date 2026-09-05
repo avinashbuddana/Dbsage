@@ -6,6 +6,7 @@ import { PostgresColumnMappingValidator } from './postgres-column-mapping.valida
 const table: PostgresTableMetadata = {
   columns: [
     {
+      characterMaximumLength: null,
       dataType: 'uuid',
       hasDefault: true,
       isGenerated: false,
@@ -14,6 +15,7 @@ const table: PostgresTableMetadata = {
       name: 'id',
     },
     {
+      characterMaximumLength: null,
       dataType: 'text',
       hasDefault: false,
       isGenerated: false,
@@ -22,6 +24,7 @@ const table: PostgresTableMetadata = {
       name: 'name',
     },
     {
+      characterMaximumLength: null,
       dataType: 'text',
       hasDefault: false,
       isGenerated: true,

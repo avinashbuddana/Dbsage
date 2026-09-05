@@ -16,6 +16,7 @@ interface ColumnRow {
   has_default: boolean;
   is_generated: boolean;
   is_identity: boolean;
+  character_maximum_length: number | null;
 }
 
 interface SchemaRow {
@@ -119,7 +120,8 @@ export class PostgresTableMetadataService {
           is_nullable = 'YES' AS is_nullable,
           column_default IS NOT NULL AS has_default,
           is_generated = 'ALWAYS' AS is_generated,
-          is_identity = 'YES' AS is_identity
+          is_identity = 'YES' AS is_identity,
+          character_maximum_length
         FROM information_schema.columns
         WHERE table_schema = $1 AND table_name = $2
         ORDER BY ordinal_position`,
@@ -136,6 +138,7 @@ export class PostgresTableMetadataService {
           hasDefault: column.has_default,
           isGenerated: column.is_generated,
           isIdentity: column.is_identity,
+          characterMaximumLength: column.character_maximum_length,
         })),
       };
     });

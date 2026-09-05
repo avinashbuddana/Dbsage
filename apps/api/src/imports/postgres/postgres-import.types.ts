@@ -5,6 +5,7 @@ export interface PostgresColumnMetadata {
   hasDefault: boolean;
   isGenerated: boolean;
   isIdentity: boolean;
+  characterMaximumLength: number | null;
 }
 
 export interface PostgresTableMetadata {
