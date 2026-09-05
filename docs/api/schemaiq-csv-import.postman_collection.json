@@ -1,0 +1,155 @@
+{
+  "info": {
+    "_postman_id": "f43c8f88-e7b5-4d84-a98c-5c226104639f",
+    "name": "SchemaIQ CSV Import API",
+    "description": "Development collection for the SchemaIQ PostgreSQL CSV import backend. Set organizationId and csvFilePath before use. x-organization-id is a development-only context header, not production authentication.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api/v1"
+    },
+    {
+      "key": "organizationId",
+      "value": "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      "key": "importId",
+      "value": ""
+    },
+    {
+      "key": "csvFilePath",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Upload CSV import",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{csvFilePath}}"
+            },
+            {
+              "key": "targetSchema",
+              "value": "public",
+              "type": "text"
+            },
+            {
+              "key": "targetTable",
+              "value": "customer_records",
+              "type": "text"
+            },
+            {
+              "key": "delimiter",
+              "value": ",",
+              "type": "text"
+            },
+            {
+              "key": "columnMapping",
+              "value": "{\"full_name\":\"name\",\"email_address\":\"email\"}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/imports/csv",
+        "description": "Streams one CSV file. Expect 201 for a synchronous import or 202 when it is queued. Save the response id as importId."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('accepted or completed', function () { pm.expect(pm.response.code).to.be.oneOf([201, 202]); });",
+              "var body = pm.response.json();",
+              "if (body.id) { pm.collectionVariables.set('importId', body.id); }"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "List imports",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/imports?page=1&limit=20",
+        "description": "Lists history scoped to the development organization context."
+      }
+    },
+    {
+      "name": "Get import status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/imports/{{importId}}",
+        "description": "Poll while status is QUEUED or PROCESSING. Terminal states are COMPLETED, FAILED, and CANCELLED."
+      }
+    },
+    {
+      "name": "Retry failed import",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/imports/{{importId}}/retry",
+        "description": "Queues a retry only for FAILED imports whose retained source file still exists."
+      }
+    },
+    {
+      "name": "Cancel queued import",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/imports/{{importId}}/cancel",
+        "description": "Works only while the import has not been claimed by a worker."
+      }
+    },
+    {
+      "name": "Delete terminal import history",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/imports/{{importId}}",
+        "description": "Deletes only COMPLETED, FAILED, or CANCELLED history and its retained source file."
+      }
+    }
+  ]
+}

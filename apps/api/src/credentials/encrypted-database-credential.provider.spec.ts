@@ -13,14 +13,21 @@ describe('EncryptedDatabaseCredentialProvider', () => {
   it('persists encrypted fields and retrieves decrypted typed secrets', async () => {
     let stored!: DatasourceSecretEntity;
     const repository = {
-      create: jest.fn((value) => Object.assign(new DatasourceSecretEntity(), value)),
-      save: jest.fn(async (value) => {
-        stored = Array.isArray(value) ? value[0] : value;
-        return value;
+      create: jest.fn((value: Partial<DatasourceSecretEntity>) =>
+        Object.assign(new DatasourceSecretEntity(), value),
+      ),
+      save: jest.fn((value: DatasourceSecretEntity[]) => {
+        const [first] = value;
+        if (!first) throw new Error('expected at least one entity to save');
+        stored = first;
+        return Promise.resolve(value);
       }),
-      find: jest.fn(async () => [stored]),
-    } as unknown as Repository<DatasourceSecretEntity>;
-    const provider = new EncryptedDatabaseCredentialProvider(repository, encryption);
+      find: jest.fn(() => Promise.resolve([stored])),
+    };
+    const provider = new EncryptedDatabaseCredentialProvider(
+      repository as unknown as Repository<DatasourceSecretEntity>,
+      encryption,
+    );
 
     await provider.saveCredentials(datasourceId, {
       [DatasourceSecretType.DatabasePassword]: 'database-password',
@@ -42,10 +49,11 @@ describe('EncryptedDatabaseCredentialProvider', () => {
       encryptionVersion: 1,
     });
 
-    expect(instanceToPlain(entity)).not.toMatchObject({
-      encryptedValue: expect.anything(),
-      iv: expect.anything(),
-      authTag: expect.anything(),
-    });
+    const leakedFields: Record<string, unknown> = {
+      encryptedValue: expect.anything() as unknown,
+      iv: expect.anything() as unknown,
+      authTag: expect.anything() as unknown,
+    };
+    expect(instanceToPlain(entity)).not.toMatchObject(leakedFields);
   });
 });

@@ -26,7 +26,9 @@ class FakeSshClient extends EventEmitter {
       _destinationHost: string,
       _destinationPort: number,
       callback: (error: Error | undefined, stream: Socket) => void,
-    ) => callback(new Error('not used'), undefined as unknown as Socket),
+    ) => {
+      callback(new Error('not used'), undefined as unknown as Socket);
+    },
   );
   options?: ConnectConfig;
 }
@@ -120,18 +122,26 @@ describe('SshTunnelService', () => {
     expect(tunnel.isHealthy()).toBe(false);
   });
 
-  it('normalizes SSH authentication failures and closes the client', async () => {
+  it.each([
+    [{ level: 'client-authentication' }, 'SSH_AUTHENTICATION_FAILED'],
+    [{ code: 'ECONNREFUSED' }, 'SSH_CONNECTION_REFUSED'],
+    [{ code: 'ETIMEDOUT' }, 'SSH_TIMEOUT'],
+    [{ code: 'SOMETHING_UNMAPPED' }, 'SSH_TUNNEL_FAILED'],
+  ])('normalizes %j to %s and closes the client', async (errorDetails, safeCode) => {
     const client = new FakeSshClient();
     client.connect.mockImplementationOnce(() => {
-      queueMicrotask(() => client.emit('error', Object.assign(new Error('driver detail'), { level: 'client-authentication' })));
+      queueMicrotask(() =>
+        client.emit('error', Object.assign(new Error('driver detail'), errorDetails)),
+      );
       return client as unknown as Client;
     });
     const service = new TestSshTunnelService(appConfig, client);
 
-    await expect(service.createTunnel(datasourceConfig)).rejects.toMatchObject({
-      code: 'SSH_AUTHENTICATION_FAILED',
-      message: expect.not.stringContaining('driver detail'),
-    });
+    const expected: Record<string, unknown> = {
+      code: safeCode,
+      message: expect.not.stringContaining('driver detail') as unknown,
+    };
+    await expect(service.createTunnel(datasourceConfig)).rejects.toMatchObject(expected);
     expect(client.end).toHaveBeenCalledTimes(1);
   });
 });

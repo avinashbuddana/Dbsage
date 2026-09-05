@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { InjectPinoLogger, PinoLogger } from 'nestjs-pino';
 
 import { DatasourceConnectionError } from '../../database-connections/datasource-connection.error';
+import { DuplicateImportException } from '../../imports/hashing/duplicate-import.error';
 import type { RequestWithId } from '../types/request-with-id';
 
 interface ErrorResponse {
@@ -10,6 +11,9 @@ interface ErrorResponse {
   code: string;
   message: string;
   requestId: string;
+  existingImportId?: string;
+  fileHash?: string;
+  previousImport?: DuplicateImportException['previousImport'];
 }
 
 function codeForStatus(status: number): string {
@@ -65,21 +69,28 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const request = context.getRequest<RequestWithId>();
     const response = context.getResponse<Response>();
+    const requestId = request.id ?? 'unknown';
+    const isKnownException =
+      exception instanceof HttpException ||
+      exception instanceof DatasourceConnectionError ||
+      exception instanceof DuplicateImportException;
+
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
-        : exception instanceof DatasourceConnectionError
-          ? exception.code === 'DATASOURCE_NETWORK_BLOCKED'
-            ? 400
-            : exception.code === 'DATASOURCE_DISABLED'
-              ? 409
-              : exception.code === 'DATASOURCE_RESOURCE_LIMIT'
-                ? 503
-                : 502
-          : 500;
-    const requestId = request.id ?? 'unknown';
+        : exception instanceof DuplicateImportException
+          ? 409
+          : exception instanceof DatasourceConnectionError
+            ? exception.code === 'DATASOURCE_NETWORK_BLOCKED'
+              ? 400
+              : exception.code === 'DATASOURCE_DISABLED'
+                ? 409
+                : exception.code === 'DATASOURCE_RESOURCE_LIMIT'
+                  ? 503
+                  : 502
+            : 500;
 
-    if (!(exception instanceof HttpException) && !(exception instanceof DatasourceConnectionError)) {
+    if (!isKnownException) {
       this.logger.error(
         {
           requestId,
@@ -92,12 +103,25 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const body: ErrorResponse = {
       statusCode: status,
       code:
-        exception instanceof DatasourceConnectionError ? exception.code : codeForStatus(status),
+        exception instanceof DatasourceConnectionError
+          ? exception.code
+          : exception instanceof DuplicateImportException
+            ? exception.code
+            : codeForStatus(status),
       message:
         exception instanceof DatasourceConnectionError
           ? exception.message
-          : messageForStatus(status),
+          : exception instanceof DuplicateImportException
+            ? exception.message
+            : messageForStatus(status),
       requestId,
+      ...(exception instanceof DuplicateImportException
+        ? {
+            existingImportId: exception.existingImportId,
+            fileHash: exception.fileHash,
+            ...(exception.previousImport ? { previousImport: exception.previousImport } : {}),
+          }
+        : {}),
     };
 
     response.status(status).json(body);

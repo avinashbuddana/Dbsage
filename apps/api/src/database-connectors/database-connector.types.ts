@@ -1,8 +1,8 @@
-import type { SshAuthenticationType } from '../datasources/enums/datasource.enums';
-import {
+import type {
   DatasourceConnectionMode,
   DatasourceStatus,
   DatasourceType,
+  SshAuthenticationType,
 } from '../datasources/enums/datasource.enums';
 
 export interface SshConnectionConfig {

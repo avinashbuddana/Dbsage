@@ -3,7 +3,6 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
 import { DatasourceConnectionError } from '../database-connections/datasource-connection.error';
-import { DatasourceConnectionMode } from '../datasources/enums/datasource.enums';
 
 const METADATA_HOSTS = new Set([
   '169.254.169.254',
@@ -26,15 +25,18 @@ function isLocalAddress(address: string): boolean {
   const normalized = address.toLowerCase();
   if (normalized === '::' || normalized === '::1') return true;
   if (normalized.startsWith('::ffff:')) return isLocalAddress(normalized.slice(7));
-  if (/^fe[89ab][0-9a-f]:/.test(normalized)) return true;
 
   const octets = normalized.split('.').map(Number);
   return octets.length === 4 && (octets[0] === 127 || octets.every((octet) => octet === 0));
 }
 
+// Link-local addresses (IPv4 169.254.0.0/16, IPv6 fe80::/10) are always blocked, even with
+// ALLOW_LOCAL_DATASOURCES=true: 169.254.169.254 (and its IPv6 analogues) is where cloud metadata
+// services live, so this class of address must never be reachable regardless of the dev override.
 function isMetadataAddress(address: string): boolean {
   const normalized = address.toLowerCase();
   if (METADATA_HOSTS.has(normalized) || normalized.startsWith('169.254.')) return true;
+  if (/^fe[89ab][0-9a-f]:/.test(normalized)) return true;
   return normalized.startsWith('::ffff:') && isMetadataAddress(normalized.slice(7));
 }
 
@@ -42,7 +44,7 @@ function isMetadataAddress(address: string): boolean {
 export class DatasourceNetworkPolicyService {
   constructor(private readonly allowLocalDatasources: boolean) {}
 
-  async validateTarget(host: string, _mode: DatasourceConnectionMode): Promise<string> {
+  async validateTarget(host: string): Promise<string> {
     const normalized = this.validateHost(host);
 
     const addresses = isIP(normalized)

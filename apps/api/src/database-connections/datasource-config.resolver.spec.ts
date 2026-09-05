@@ -1,7 +1,7 @@
 import type { Repository } from 'typeorm';
 
 import type { CredentialProvider } from '../credentials/credential-provider.interface';
-import { DatasourceSshConfigEntity } from '../datasources/entities/datasource-ssh-config.entity';
+import type { DatasourceSshConfigEntity } from '../datasources/entities/datasource-ssh-config.entity';
 import { DatasourceEntity } from '../datasources/entities/datasource.entity';
 import {
   DatasourceConnectionMode,
@@ -30,21 +30,21 @@ describe('DatasourceConfigResolver', () => {
     });
     const repository = {
       findOne: jest.fn().mockResolvedValue(datasource),
-    } as unknown as Repository<DatasourceEntity>;
-    const sshRepository = {} as Repository<DatasourceSshConfigEntity>;
+    };
+    const sshRepository = {};
     const credentials = {
       getCredentials: jest.fn().mockResolvedValue({
         [DatasourceSecretType.DatabasePassword]: 'database-password',
       }),
-    } as unknown as CredentialProvider;
+    };
     const network = {
-      validateTarget: jest.fn(async (host: string) => host),
-    } as unknown as DatasourceNetworkPolicyService;
+      validateTarget: jest.fn((host: string) => Promise.resolve(host)),
+    };
     const resolver = new DatasourceConfigResolver(
-      repository,
-      sshRepository,
-      credentials,
-      network,
+      repository as unknown as Repository<DatasourceEntity>,
+      sshRepository as unknown as Repository<DatasourceSshConfigEntity>,
+      credentials as unknown as CredentialProvider,
+      network as unknown as DatasourceNetworkPolicyService,
     );
 
     await expect(resolver.resolve(organizationId, datasourceId)).resolves.toMatchObject({

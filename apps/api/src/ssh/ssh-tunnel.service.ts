@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { createServer, type Server } from 'node:net';
 import { Client, type ConnectConfig } from 'ssh2';
 
-import type { AppConfigService } from '../config/app-config.service';
+import { AppConfigService } from '../config/app-config.service';
 import type { CustomerDatabaseConnectionConfig } from '../database-connectors/database-connector.types';
 import { DatasourceConnectionError } from '../database-connections/datasource-connection.error';
 import { SshAuthenticationType } from '../datasources/enums/datasource.enums';
@@ -33,7 +33,9 @@ export class SshTunnelService {
 
     return new Promise<SshTunnelHandle>((resolve, reject) => {
       const fail = (error: Error): void => {
-        void close().then(() => reject(this.normalizeError(error)));
+        void close().then(() => {
+          reject(this.normalizeError(error));
+        });
       };
       server.once('error', fail);
       client.once('error', fail);
@@ -111,7 +113,11 @@ export class SshTunnelService {
 
   private closeServer(server: Server): Promise<void> {
     if (!server.listening) return Promise.resolve();
-    return new Promise((resolve) => server.close(() => resolve()));
+    return new Promise((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
   }
 
   private normalizeError(error: Error): DatasourceConnectionError {

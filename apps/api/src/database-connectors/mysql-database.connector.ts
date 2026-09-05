@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-import type { AppConfigService } from '../config/app-config.service';
+import { AppConfigService } from '../config/app-config.service';
 import { DatasourceConnectionError } from '../database-connections/datasource-connection.error';
 import type { DatabaseConnector } from './database-connector.interface';
 import type {

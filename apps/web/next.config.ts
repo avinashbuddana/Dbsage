@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(import.meta.dirname, '../..'),
   reactStrictMode: true,
-  transpilePackages: ['@schemaiq/shared'],
+  transpilePackages: ['@schemaiq/shared', '@schemaiq/types'],
 };
 
 export default nextConfig;

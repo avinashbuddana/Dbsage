@@ -18,6 +18,7 @@ const config: Config = {
     'src/common/request-id.ts',
     'src/health/health.controller.ts',
     'src/health/health.service.ts',
+    'src/imports/**/*.ts',
   ],
   coverageThreshold: {
     global: {

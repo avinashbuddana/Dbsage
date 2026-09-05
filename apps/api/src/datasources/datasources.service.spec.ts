@@ -1,7 +1,6 @@
 import type { DataSource, EntityManager, Repository } from 'typeorm';
 
 import type { AuditService } from '../audit/audit.service';
-import type { CredentialProvider } from '../credentials/credential-provider.interface';
 import type { DatabaseConnectionManager } from '../database-connections/database-connection.manager';
 import { DatasourceConnectionError } from '../database-connections/datasource-connection.error';
 import type { DatasourceNetworkPolicyService } from '../network/datasource-network-policy.service';
@@ -17,7 +16,7 @@ import {
 import { DatasourcesService } from './datasources.service';
 
 const organizationId = crypto.randomUUID();
-const input = Object.assign(new CreateDatasourceDto(), {
+const baseInput = {
   name: 'Production reporting',
   databaseType: DatasourceType.MySql,
   connectionMode: DatasourceConnectionMode.Direct,
@@ -27,44 +26,51 @@ const input = Object.assign(new CreateDatasourceDto(), {
   username: 'schemaiq_reader',
   databasePassword: 'database-password',
   sslEnabled: true,
-});
+};
+const input = Object.assign(new CreateDatasourceDto(), baseInput);
 
 function setup() {
   const datasourceRepository = {
     findOne: jest.fn(),
     find: jest.fn(),
-  } as unknown as Repository<DatasourceEntity>;
-  const sshRepository = {} as Repository<DatasourceSshConfigEntity>;
+  };
+  const sshRepository = {};
   const transactionalDatasourceRepository = {
-    create: jest.fn((value) => Object.assign(new DatasourceEntity(), value)),
-    save: jest.fn(async (value: DatasourceEntity) =>
-      Object.assign(value, {
-        id: crypto.randomUUID(),
-        createdAt: new Date('2026-09-03T00:00:00Z'),
-        updatedAt: new Date('2026-09-03T00:00:00Z'),
-      }),
+    create: jest.fn((value: Partial<DatasourceEntity>) =>
+      Object.assign(new DatasourceEntity(), value),
+    ),
+    save: jest.fn((value: DatasourceEntity) =>
+      Promise.resolve(
+        Object.assign(value, {
+          id: crypto.randomUUID(),
+          createdAt: new Date('2026-09-03T00:00:00Z'),
+          updatedAt: new Date('2026-09-03T00:00:00Z'),
+        }),
+      ),
     ),
   };
   const transactionalSshRepository = {
-    create: jest.fn((value) => Object.assign(new DatasourceSshConfigEntity(), value)),
+    create: jest.fn((value: Partial<DatasourceSshConfigEntity>) =>
+      Object.assign(new DatasourceSshConfigEntity(), value),
+    ),
     save: jest.fn(),
   };
   const manager = {
-    getRepository: jest.fn((entity) =>
+    getRepository: jest.fn((entity: unknown) =>
       entity === DatasourceEntity ? transactionalDatasourceRepository : transactionalSshRepository,
     ),
-  } as unknown as EntityManager;
+  };
   const database = {
-    transaction: jest.fn(async (callback: (entityManager: EntityManager) => Promise<unknown>) =>
-      callback(manager),
+    transaction: jest.fn((callback: (entityManager: EntityManager) => Promise<unknown>) =>
+      callback(manager as unknown as EntityManager),
     ),
-  } as unknown as DataSource;
+  };
   const credentials = {
     saveCredentials: jest.fn(),
     getCredentials: jest.fn(),
     updateCredentials: jest.fn(),
     deleteCredentials: jest.fn(),
-  } as unknown as CredentialProvider;
+  };
   const connectionManager = {
     testConfig: jest.fn().mockResolvedValue({
       success: true,
@@ -72,20 +78,20 @@ function setup() {
       databaseType: DatasourceType.MySql,
     }),
     invalidateDatasource: jest.fn(),
-  } as unknown as DatabaseConnectionManager;
+  };
   const networkPolicy = {
-    validateTarget: jest.fn(async (host: string) => host),
+    validateTarget: jest.fn((host: string) => Promise.resolve(host)),
     validateRemoteTarget: jest.fn((host: string) => host),
-  } as unknown as DatasourceNetworkPolicyService;
-  const audit = { record: jest.fn() } as unknown as AuditService;
+  };
+  const audit = { record: jest.fn() };
   const service = new DatasourcesService(
-    datasourceRepository,
-    sshRepository,
-    database,
+    datasourceRepository as unknown as Repository<DatasourceEntity>,
+    sshRepository as unknown as Repository<DatasourceSshConfigEntity>,
+    database as unknown as DataSource,
     credentials,
-    connectionManager,
-    networkPolicy,
-    audit,
+    connectionManager as unknown as DatabaseConnectionManager,
+    networkPolicy as unknown as DatasourceNetworkPolicyService,
+    audit as unknown as AuditService,
   );
 
   return {
@@ -147,7 +153,7 @@ describe('DatasourcesService', () => {
 
     await expect(
       service.create(organizationId, {
-        ...input,
+        ...baseInput,
         connectionMode: DatasourceConnectionMode.Vpn,
         status: DatasourceStatus.Active,
       } as CreateDatasourceDto),

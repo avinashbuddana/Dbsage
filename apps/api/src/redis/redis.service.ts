@@ -49,6 +49,10 @@ export class RedisService implements OnApplicationBootstrap, OnApplicationShutdo
     return (await this.client.ping()) === 'PONG';
   }
 
+  getClient(): ReturnType<typeof createClient> {
+    return this.client;
+  }
+
   disconnect(): Promise<void> {
     if (this.client.isOpen) {
       this.client.destroy();
