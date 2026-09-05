@@ -9,7 +9,8 @@ import { GlobalExceptionFilter } from './global-exception.filter';
 
 describe('GlobalExceptionFilter', () => {
   function setup() {
-    const logger = { error: jest.fn() } as unknown as PinoLogger;
+    const loggerError = jest.fn();
+    const logger = { error: loggerError } as unknown as PinoLogger;
     const filter = new GlobalExceptionFilter(logger);
     const json = jest.fn();
     const status = jest.fn().mockReturnValue({ json });
@@ -20,7 +21,7 @@ describe('GlobalExceptionFilter', () => {
         getResponse: () => response,
       }),
     } as unknown as ArgumentsHost;
-    return { filter, host, json, logger, status };
+    return { filter, host, json, loggerError, status };
   }
 
   it('sanitizes a generic HttpException into the standard envelope', () => {
@@ -99,7 +100,7 @@ describe('GlobalExceptionFilter', () => {
   });
 
   it('logs and sanitizes a truly unhandled error as a 500', () => {
-    const { filter, host, json, logger, status } = setup();
+    const { filter, host, json, loggerError, status } = setup();
 
     filter.catch(new Error('unexpected'), host);
 
@@ -107,6 +108,6 @@ describe('GlobalExceptionFilter', () => {
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'INTERNAL_SERVER_ERROR', message: 'Internal server error' }),
     );
-    expect(logger.error).toHaveBeenCalled();
+    expect(loggerError).toHaveBeenCalled();
   });
 });

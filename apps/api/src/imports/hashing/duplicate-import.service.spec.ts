@@ -95,15 +95,12 @@ describe('DuplicateImportService', () => {
 
     await service.assertNotDuplicate(organizationId, 'public', 'customers', 'abc123');
 
-    expect(repository.findOne).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          fileHash: 'abc123',
-          organizationId,
-          targetSchema: 'public',
-          targetTable: 'customers',
-        }),
-      }),
-    );
+    const [options] = repository.findOne.mock.calls[0] as [
+      { where: { fileHash: string; organizationId: string; targetSchema: string; targetTable: string } },
+    ];
+    expect(options.where.fileHash).toBe('abc123');
+    expect(options.where.organizationId).toBe(organizationId);
+    expect(options.where.targetSchema).toBe('public');
+    expect(options.where.targetTable).toBe('customers');
   });
 });
