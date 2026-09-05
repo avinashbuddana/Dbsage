@@ -16,7 +16,16 @@ import { IMPORT_FILE_STORAGE, type ImportFileStorage } from './storage/import-fi
 describe('ImportsController', () => {
   let app: INestApplication;
   const organizationId = '00000000-0000-4000-8000-000000000001';
-  const imports = { create: jest.fn(), findAll: jest.fn(), findOne: jest.fn(), retry: jest.fn(), cancel: jest.fn(), remove: jest.fn() };
+  const imports = {
+    create: jest.fn(),
+    findAll: jest.fn(),
+    findOne: jest.fn(),
+    getClientConfiguration: jest.fn(),
+    retry: jest.fn(),
+    cancel: jest.fn(),
+    remove: jest.fn(),
+    summary: jest.fn(),
+  };
   const metadata = { listSchemas: jest.fn(), listTables: jest.fn(), getTable: jest.fn() };
   const storage = {
     delete: jest.fn(),
@@ -108,6 +117,21 @@ describe('ImportsController', () => {
         sizeBytes: 9,
       },
     );
+  });
+
+  it('returns the client configuration', async () => {
+    imports.getClientConfiguration.mockReturnValue({
+      allowedDelimiters: [',', ';', '|'],
+      maxColumns: 200,
+      maxFileSizeBytes: 1_073_741_824,
+      maxHeaderLength: 256,
+      queueThresholdBytes: 5_242_880,
+    });
+
+    const httpServer = app.getHttpServer() as Parameters<typeof request>[0];
+    const response = await request(httpServer).get('/imports/config').expect(200);
+
+    expect((response.body as { queueThresholdBytes: number }).queueThresholdBytes).toBe(5_242_880);
   });
 
   it('lists allowed target schemas', async () => {

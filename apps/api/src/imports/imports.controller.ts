@@ -17,6 +17,7 @@ import {
 import type { Response } from 'express';
 
 import type {
+  ImportClientConfigurationResponse,
   ImportTargetSchemaResponse,
   ImportTargetTableResponse,
   ImportTargetDetailsResponse,
@@ -72,6 +73,11 @@ export class ImportsController {
   @Get()
   findAll(@Query() query: ImportQueryDto): Promise<{ items: DataImportResponse[]; total: number }> {
     return this.imports.findAll(this.organizationContext.getOrganizationId(), query.page, query.limit);
+  }
+
+  @Get('config')
+  getClientConfiguration(): ImportClientConfigurationResponse {
+    return this.imports.getClientConfiguration();
   }
 
   @Get('targets/schemas')
