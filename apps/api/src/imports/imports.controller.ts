@@ -17,6 +17,7 @@ import {
 import type { Response } from 'express';
 
 import type {
+  DataImportRowErrorResponse,
   DataImportSummaryResponse,
   ImportClientConfigurationResponse,
   ImportTargetSchemaResponse,
@@ -118,6 +119,11 @@ export class ImportsController {
   @Get(':id')
   findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string): Promise<DataImportResponse> {
     return this.imports.findOne(this.organizationContext.getOrganizationId(), id);
+  }
+
+  @Get(':id/errors')
+  findErrors(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string): Promise<DataImportRowErrorResponse[]> {
+    return this.imports.findErrors(this.organizationContext.getOrganizationId(), id);
   }
 
   @Post(':id/retry')

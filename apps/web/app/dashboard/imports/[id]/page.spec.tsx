@@ -13,10 +13,12 @@ vi.mock('next/link', () => ({
 }));
 
 const useImportMock = vi.fn();
+const useImportErrorsMock = vi.fn();
 const retryMutate = vi.fn();
 const cancelMutate = vi.fn();
 vi.mock('../../../../lib/queries/imports-queries', () => ({
   useImport: (...args: unknown[]): unknown => useImportMock(...args),
+  useImportErrors: (...args: unknown[]): unknown => useImportErrorsMock(...args),
 }));
 vi.mock('../../../../lib/queries/imports-mutations', () => ({
   useCancelImport: (): unknown => ({ isPending: false, mutate: cancelMutate }),
@@ -54,6 +56,7 @@ describe('ImportDetailPage per-status rendering', () => {
   beforeEach(() => {
     retryMutate.mockClear();
     cancelMutate.mockClear();
+    useImportErrorsMock.mockReturnValue({ data: undefined });
   });
 
   it('shows a loading skeleton while pending', () => {
@@ -117,6 +120,30 @@ describe('ImportDetailPage per-status rendering', () => {
 
     expect(screen.getByText('Import completed')).toBeInTheDocument();
     expect(screen.getByText('2,431,994')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Import Another File' })).toBeInTheDocument();
+  });
+
+  it('shows the partially-completed summary and the list of skipped rows', () => {
+    useImportMock.mockReturnValue({
+      data: {
+        ...base,
+        completedAt: '2026-09-05T09:49:00.000Z',
+        failedRows: '2',
+        status: DataImportStatus.PartiallyCompleted,
+        successfulRows: '998',
+      },
+      isError: false,
+      isPending: false,
+    });
+    useImportErrorsMock.mockReturnValue({
+      data: [
+        { csvColumn: 'age', databaseColumn: 'age', error: "Cannot convert 'twenty' to integer", row: 24, targetType: 'integer', value: 'twenty' },
+      ],
+    });
+    render(<ImportDetailPage />);
+
+    expect(screen.getByText('Import partially completed')).toBeInTheDocument();
+    expect(screen.getByText("Cannot convert 'twenty' to integer")).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Import Another File' })).toBeInTheDocument();
   });
 

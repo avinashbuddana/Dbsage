@@ -77,6 +77,15 @@ export function useImportTables(schema: string | null) {
   });
 }
 
+export function useImportErrors(id: string, enabled: boolean) {
+  const { organizationId } = useOrganization();
+  return useQuery({
+    enabled: Boolean(organizationId) && Boolean(id) && enabled,
+    queryFn: () => importsApi.errors(organizationId, id),
+    queryKey: ['imports', 'errors', organizationId, id],
+  });
+}
+
 export function useImportTableDetails(schema: string | null, table: string | null) {
   const { organizationId } = useOrganization();
   return useQuery({

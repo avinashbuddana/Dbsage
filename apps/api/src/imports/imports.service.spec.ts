@@ -70,6 +70,7 @@ function setup() {
   };
   const errorRepository = {
     create: jest.fn((value: Partial<DataImportErrorEntity>) => value as DataImportErrorEntity),
+    find: jest.fn().mockResolvedValue([]),
     save: jest.fn().mockResolvedValue([]),
   };
   const processor = {
@@ -366,6 +367,39 @@ describe('ImportsService', () => {
     await expect(service.retry(organizationId, importId)).rejects.toThrow(ConflictException);
     await expect(service.cancel(organizationId, importId)).rejects.toThrow(ConflictException);
     await expect(service.remove(organizationId, importId)).rejects.toThrow(ConflictException);
+  });
+
+  it('lists the persisted row errors for an import, mapped back to the row error shape', async () => {
+    const { errorRepository, repository, service } = setup();
+    repository.findOne.mockResolvedValue(entity());
+    errorRepository.find.mockResolvedValue([
+      {
+        csvColumn: 'age',
+        databaseColumn: 'age',
+        errorMessage: "Cannot convert 'twenty' to integer",
+        id: 'error-1',
+        importId,
+        rawValue: 'twenty',
+        rowNumber: 3,
+        targetType: 'integer',
+      },
+    ]);
+
+    const errors = await service.findErrors(organizationId, importId);
+
+    expect(errors).toEqual([
+      { csvColumn: 'age', databaseColumn: 'age', error: "Cannot convert 'twenty' to integer", row: 3, targetType: 'integer', value: 'twenty' },
+    ]);
+    expect(errorRepository.find).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { importId } }),
+    );
+  });
+
+  it('does not list row errors for an import outside the requesting organization', async () => {
+    const { repository, service } = setup();
+    repository.findOne.mockResolvedValue(null);
+
+    await expect(service.findErrors(organizationId, importId)).rejects.toThrow(NotFoundException);
   });
 
   it('lists import history within the requesting organization', async () => {

@@ -13,7 +13,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { Skeleton } from '../../../../components/ui/skeleton';
 import { formatBytes, formatDuration, formatRowCount } from '../../../../lib/format';
 import { useCancelImport, useRetryImport } from '../../../../lib/queries/imports-mutations';
-import { useImport } from '../../../../lib/queries/imports-queries';
+import { useImport, useImportErrors } from '../../../../lib/queries/imports-queries';
 
 export default function ImportDetailPage() {
   const params = useParams<{ id: string }>();
@@ -21,6 +21,10 @@ export default function ImportDetailPage() {
   const retry = useRetryImport();
   const cancel = useCancelImport();
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const errorsQuery = useImportErrors(
+    params.id,
+    importQuery.data?.status === DataImportStatus.PartiallyCompleted,
+  );
 
   if (importQuery.isPending) {
     return (
@@ -130,6 +134,64 @@ export default function ImportDetailPage() {
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               Return to Imports
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {data.status === DataImportStatus.PartiallyCompleted && (
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
+            <h3 className="text-base font-semibold text-amber-900">Import partially completed</h3>
+            <p className="mt-2 text-sm text-amber-800">
+              {formatRowCount(data.successfulRows)} rows were imported into {data.targetSchema}.{data.targetTable}, but{' '}
+              {formatRowCount(data.failedRows)} rows could not be converted and were skipped. Re-importing this file will
+              not be allowed to avoid duplicating the rows that already succeeded — review the errors below.
+            </p>
+            <dl className="mt-4 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-amber-700">Rows imported</dt>
+                <dd className="text-amber-900">{formatRowCount(data.successfulRows)}</dd>
+              </div>
+              <div>
+                <dt className="text-amber-700">Rows skipped</dt>
+                <dd className="text-amber-900">{formatRowCount(data.failedRows)}</dd>
+              </div>
+              <div>
+                <dt className="text-amber-700">Duration</dt>
+                <dd className="text-amber-900">{formatDuration(data.startedAt, data.completedAt)}</dd>
+              </div>
+            </dl>
+          </div>
+          {errorsQuery.data && errorsQuery.data.length > 0 && (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Row</th>
+                    <th className="px-4 py-3">CSV Column</th>
+                    <th className="px-4 py-3">Database Column</th>
+                    <th className="px-4 py-3">Value</th>
+                    <th className="px-4 py-3">Error</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {errorsQuery.data.map((rowError) => (
+                    <tr key={`${String(rowError.row)}-${rowError.databaseColumn}`}>
+                      <td className="px-4 py-3 text-slate-500">{rowError.row}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900">{rowError.csvColumn}</td>
+                      <td className="px-4 py-3 text-slate-500">{rowError.databaseColumn}</td>
+                      <td className="px-4 py-3 text-slate-500">{rowError.value || '—'}</td>
+                      <td className="px-4 py-3 text-red-600">{rowError.error}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <Link href="/dashboard/imports/new" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              Import Another File
             </Link>
           </div>
         </div>

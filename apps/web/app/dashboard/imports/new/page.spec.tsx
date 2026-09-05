@@ -74,7 +74,24 @@ vi.mock('../../../../components/imports/new-table-columns-table', () => ({
   NewTableColumnsTable: () => <div>mock-new-table-columns</div>,
 }));
 vi.mock('../../../../components/imports/import-summary', () => ({
-  ImportSummary: ({ onStart }: { onStart: () => void }) => <button onClick={onStart}>mock-start-import</button>,
+  ImportSummary: ({
+    onImportModeChange,
+    onStart,
+  }: {
+    onImportModeChange?: (importMode: string) => void;
+    onStart: () => void;
+  }) => (
+    <div>
+      <button
+        onClick={() => {
+          onImportModeChange?.('FLEXIBLE');
+        }}
+      >
+        mock-select-flexible-mode
+      </button>
+      <button onClick={onStart}>mock-start-import</button>
+    </div>
+  ),
 }));
 
 import NewImportPage from './page';
@@ -171,6 +188,24 @@ describe('NewImportPage', () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/dashboard/imports/import-456');
     });
+  });
+
+  it('submits the selected import mode', async () => {
+    mutateAsync.mockResolvedValue({ data: { id: 'import-789' }, status: 201 });
+    const user = userEvent.setup();
+    render(<NewImportPage />);
+
+    await uploadMockFileAndWait(user);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByText('mock-select-schema'));
+    await user.click(screen.getByText('mock-select-table'));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByText('mock-select-flexible-mode'));
+    await user.click(screen.getByText('mock-start-import'));
+
+    const call = mutateAsync.mock.calls[0]?.[0] as { input: { importMode: string } };
+    expect(call.input.importMode).toBe('FLEXIBLE');
   });
 
   it('shows a friendly error and does not navigate when starting the import fails', async () => {

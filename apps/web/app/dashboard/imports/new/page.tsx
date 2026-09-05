@@ -1,5 +1,6 @@
 'use client';
 
+import { DataImportMode } from '@schemaiq/types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useReducer } from 'react';
@@ -47,6 +48,7 @@ interface WizardState {
   uploadProgress: number | null;
   submitError: string | null;
   duplicateImport: DuplicateImportInfo | null;
+  importMode: DataImportMode;
 }
 
 type WizardAction =
@@ -61,13 +63,15 @@ type WizardAction =
   | { type: 'UPDATE_MAPPING_TYPE'; index: number; dataType: string }
   | { type: 'SET_UPLOAD_PROGRESS'; progress: number | null }
   | { type: 'SET_SUBMIT_ERROR'; message: string | null }
-  | { type: 'SET_DUPLICATE_IMPORT'; duplicateImport: DuplicateImportInfo | null };
+  | { type: 'SET_DUPLICATE_IMPORT'; duplicateImport: DuplicateImportInfo | null }
+  | { type: 'SET_IMPORT_MODE'; importMode: DataImportMode };
 
 const INITIAL_STATE: WizardState = {
   createTable: false,
   csvHeaders: [],
   duplicateImport: null,
   file: null,
+  importMode: DataImportMode.Strict,
   mapping: [],
   sampleRow: [],
   schema: null,
@@ -109,6 +113,8 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       return { ...state, submitError: action.message };
     case 'SET_DUPLICATE_IMPORT':
       return { ...state, duplicateImport: action.duplicateImport };
+    case 'SET_IMPORT_MODE':
+      return { ...state, importMode: action.importMode };
     default:
       return state;
   }
@@ -178,6 +184,7 @@ export default function NewImportPage() {
           createTable: state.createTable,
           delimiter: ',',
           file: state.file,
+          importMode: state.importMode,
           targetSchema: state.schema,
           targetTable: state.table,
         },
@@ -369,6 +376,10 @@ export default function NewImportPage() {
           ignoredCount={reviewCounts.ignoredCount}
           totalColumns={state.mapping.length}
           isLarge={isLarge}
+          importMode={state.importMode}
+          onImportModeChange={(importMode) => {
+            dispatch({ importMode, type: 'SET_IMPORT_MODE' });
+          }}
           onBack={() => {
             dispatch({ step: 2, type: 'GO_TO_STEP' });
           }}

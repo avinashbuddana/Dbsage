@@ -19,6 +19,7 @@ describe('ImportsController', () => {
   const imports = {
     create: jest.fn(),
     findAll: jest.fn(),
+    findErrors: jest.fn(),
     findOne: jest.fn(),
     getClientConfiguration: jest.fn(),
     retry: jest.fn(),
@@ -253,5 +254,21 @@ describe('ImportsController', () => {
     await request(httpServer).get('/imports/00000000-0000-4000-8000-000000000009').expect(200);
 
     expect(imports.findOne).toHaveBeenCalledWith(organizationId, '00000000-0000-4000-8000-000000000009');
+  });
+
+  it('lists the row errors persisted for an import', async () => {
+    imports.findErrors.mockResolvedValue([
+      { csvColumn: 'age', databaseColumn: 'age', error: "Cannot convert 'twenty' to integer", row: 3, targetType: 'integer', value: 'twenty' },
+    ]);
+
+    const httpServer = app.getHttpServer() as Parameters<typeof request>[0];
+    const response = await request(httpServer)
+      .get('/imports/00000000-0000-4000-8000-000000000009/errors')
+      .expect(200);
+
+    expect(imports.findErrors).toHaveBeenCalledWith(organizationId, '00000000-0000-4000-8000-000000000009');
+    expect(response.body).toEqual([
+      { csvColumn: 'age', databaseColumn: 'age', error: "Cannot convert 'twenty' to integer", row: 3, targetType: 'integer', value: 'twenty' },
+    ]);
   });
 });

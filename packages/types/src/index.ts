@@ -74,6 +74,15 @@ export interface DataImportApiResponse {
   updatedAt: string;
 }
 
+export interface DataImportRowErrorResponse {
+  row: number;
+  csvColumn: string;
+  databaseColumn: string;
+  value: string;
+  targetType: string;
+  error: string;
+}
+
 export interface PaginatedDataImportsResponse {
   items: DataImportApiResponse[];
   total: number;

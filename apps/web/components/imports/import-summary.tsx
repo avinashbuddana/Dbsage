@@ -1,3 +1,5 @@
+import { DataImportMode } from '@schemaiq/types';
+
 interface ImportSummaryProps {
   fileName: string;
   fileSize: string;
@@ -8,6 +10,8 @@ interface ImportSummaryProps {
   ignoredCount: number;
   totalColumns: number;
   isLarge: boolean;
+  importMode?: DataImportMode;
+  onImportModeChange?: (importMode: DataImportMode) => void;
   onBack: () => void;
   onStart: () => void;
 }
@@ -22,6 +26,8 @@ export function ImportSummary({
   ignoredCount,
   totalColumns,
   isLarge,
+  importMode = DataImportMode.Strict,
+  onImportModeChange = () => undefined,
   onBack,
   onStart,
 }: ImportSummaryProps) {
@@ -55,6 +61,36 @@ export function ImportSummary({
               : 'This file will be imported immediately.'}
           </p>
         </div>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-6">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Import Mode</p>
+        <div className="mt-2 inline-flex rounded-lg border border-slate-300 p-1 text-sm">
+          <button
+            type="button"
+            aria-pressed={importMode === DataImportMode.Strict}
+            onClick={() => {
+              onImportModeChange(DataImportMode.Strict);
+            }}
+            className={`rounded-md px-3 py-1.5 font-medium ${importMode === DataImportMode.Strict ? 'bg-blue-600 text-white' : 'text-slate-600'}`}
+          >
+            Strict
+          </button>
+          <button
+            type="button"
+            aria-pressed={importMode === DataImportMode.Flexible}
+            onClick={() => {
+              onImportModeChange(DataImportMode.Flexible);
+            }}
+            className={`rounded-md px-3 py-1.5 font-medium ${importMode === DataImportMode.Flexible ? 'bg-blue-600 text-white' : 'text-slate-600'}`}
+          >
+            Flexible
+          </button>
+        </div>
+        <p className="mt-2 text-sm text-slate-600">
+          {importMode === DataImportMode.Strict
+            ? 'Strict: if any row fails to convert, nothing is imported.'
+            : 'Flexible: valid rows are imported; rows that fail to convert are skipped and listed for review.'}
+        </p>
       </div>
       <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
         SchemaIQ uses PostgreSQL&apos;s bulk import pipeline. The CSV is streamed rather than loaded entirely into application memory.

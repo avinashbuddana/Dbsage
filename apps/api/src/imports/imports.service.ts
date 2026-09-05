@@ -30,6 +30,7 @@ import type { PreparedCsvImport } from './processors/csv-import.processor';
 import { CsvImportProcessor } from './processors/csv-import.processor';
 import { ImportQueueService } from './queue/import-queue.service';
 import { IMPORT_FILE_STORAGE, type ImportFileStorage } from './storage/import-file-storage.interface';
+import type { RowError } from './validation/import-validator.service';
 import { RowValidationException } from './validation/row-validation.error';
 
 const PROGRESS_BYTES_INTERVAL = 1_048_576;
@@ -225,6 +226,23 @@ export class ImportsService {
 
   async findOne(organizationId: string, importId: string): Promise<DataImportResponse> {
     return this.toResponse(await this.getEntity(organizationId, importId));
+  }
+
+  async findErrors(organizationId: string, importId: string): Promise<RowError[]> {
+    await this.getEntity(organizationId, importId);
+    const errors = await this.errorRepository.find({
+      order: { rowNumber: 'ASC' },
+      take: 200,
+      where: { importId },
+    });
+    return errors.map((error) => ({
+      csvColumn: error.csvColumn,
+      databaseColumn: error.databaseColumn,
+      error: error.errorMessage,
+      row: error.rowNumber,
+      targetType: error.targetType,
+      value: error.rawValue,
+    }));
   }
 
   async findAll(

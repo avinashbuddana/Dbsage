@@ -1,5 +1,7 @@
 import type {
   DataImportApiResponse,
+  DataImportMode,
+  DataImportRowErrorResponse,
   DataImportStatus,
   DataImportSummaryResponse,
   ImportClientConfigurationResponse,
@@ -129,6 +131,9 @@ export interface CreateImportInput {
   columnMapping?: Record<string, string>;
   columnTypes?: Record<string, string>;
   createTable?: boolean;
+  importMode?: DataImportMode;
+  dateFormat?: string;
+  arrayDelimiter?: string;
 }
 
 export interface CreateImportResult {
@@ -143,6 +148,10 @@ export const importsApi = {
 
   config(organizationId: string | null): Promise<ImportClientConfigurationResponse> {
     return apiFetch('/imports/config', { organizationId });
+  },
+
+  errors(organizationId: string | null, id: string): Promise<DataImportRowErrorResponse[]> {
+    return apiFetch(`/imports/${id}/errors`, { organizationId });
   },
 
   get(organizationId: string | null, id: string, signal?: AbortSignal): Promise<DataImportApiResponse> {
@@ -195,6 +204,9 @@ export const importsApi = {
     if (input.columnMapping) formData.set('columnMapping', JSON.stringify(input.columnMapping));
     if (input.columnTypes) formData.set('columnTypes', JSON.stringify(input.columnTypes));
     if (input.createTable) formData.set('createTable', 'true');
+    if (input.importMode) formData.set('importMode', input.importMode);
+    if (input.dateFormat) formData.set('dateFormat', input.dateFormat);
+    if (input.arrayDelimiter) formData.set('arrayDelimiter', input.arrayDelimiter);
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
