@@ -24,8 +24,8 @@ describe('Sidebar', () => {
     expect(importsLinks[0]).toHaveClass('bg-blue-50');
   });
 
-  it('marks Data Sources as coming soon', () => {
+  it('links Data Sources to the live connection workflow', () => {
     render(<Sidebar mobileOpen={false} onClose={vi.fn()} />);
-    expect(screen.getAllByText('Soon').length).toBeGreaterThan(0);
+    expect(screen.getByText('Data Sources').closest('a')).toHaveAttribute('href', '/dashboard/data-sources');
   });
 });

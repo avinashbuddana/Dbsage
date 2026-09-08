@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "f43c8f88-e7b5-4d84-a98c-5c226104639f",
-    "name": "SchemaIQ CSV Import API",
-    "description": "Development collection for the SchemaIQ PostgreSQL CSV import backend. Set organizationId and csvFilePath before use. x-organization-id is a development-only context header, not production authentication.",
+    "name": "SchemaIQ API",
+    "description": "Development collection for SchemaIQ imports and read-only MySQL specification analysis. Set organizationId, csvFilePath, and datasourceId before use. x-organization-id is a development-only context header, not production authentication.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -19,11 +19,87 @@
       "value": ""
     },
     {
+      "key": "datasourceId",
+      "value": ""
+    },
+    {
       "key": "csvFilePath",
       "value": ""
     }
   ],
   "item": [
+    {
+      "name": "List datasource databases",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/datasources/{{datasourceId}}/databases",
+        "description": "Lists non-system MySQL databases accessible through an already-saved datasource."
+      }
+    },
+    {
+      "name": "Queue datasource spec analysis",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"databaseName\": \"application\",\n  \"specification\": \"# Customer identity\\nUsers require a stable identifier.\"\n}"
+        },
+        "url": "{{baseUrl}}/datasources/{{datasourceId}}/spec-analyses",
+        "description": "Returns 202 immediately. Poll the latest analysis while its status is QUEUED or PROCESSING; the source Markdown is encrypted only while processing. A completed result includes an estimated matchScore and requirement-level report."
+      }
+    },
+    {
+      "name": "Get latest datasource spec analysis",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "url": "{{baseUrl}}/datasources/{{datasourceId}}/spec-analyses/latest",
+        "description": "Poll while status is QUEUED or PROCESSING. A completed response includes matchScore, requirement-level report, and plain-language summary. Returns null when this datasource has no analysis yet."
+      }
+    },
+    {
+      "name": "Chat about datasource spec",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-organization-id",
+            "value": "{{organizationId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"databaseName\": \"application\",\n  \"specification\": \"# Customer identity\\nUsers require a stable identifier.\",\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"Which requirements are covered?\" }\n  ]\n}"
+        },
+        "url": "{{baseUrl}}/datasources/{{datasourceId}}/spec-chat",
+        "description": "Sends current Markdown and chat context only. SchemaIQ reads bounded information_schema metadata, never customer rows, and does not persist the specification or completion."
+      }
+    },
     {
       "name": "Upload CSV import",
       "request": {

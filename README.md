@@ -1,6 +1,6 @@
 # SchemaIQ
 
-SchemaIQ is an AI Database Intelligence platform. This repository currently implements **Milestone 0 — Foundation**: a secure, strictly typed modular monolith ready for later product work.
+SchemaIQ is an AI Database Intelligence platform. The repository implements the secure TypeScript foundation, managed customer MySQL connectivity, PostgreSQL CSV imports and UI, plus an OpenRouter-first LLM gateway with optional local Ollama fallback.
 
 ## Architecture
 
@@ -113,6 +113,21 @@ CI runs install with the frozen lockfile, then lint, typecheck, test, and build.
 | `DATASOURCE_ENCRYPTION_KEY` | AES-256-GCM key for datasource-scoped credentials; never logged |
 | `MYSQL_CUSTOMER_POOL_SIZE` | Per-customer dynamic MySQL pool limit; not a customer credential |
 | `MYSQL_MAX_ACTIVE_DATASOURCES` | Maximum managed customer datasource connections |
+| `LLM_PROVIDER` | Primary provider: `ollama` for local development or `openrouter` for production |
+| `OPENROUTER_API_KEY` | Server-only OpenRouter credential; never logged, returned, or sent to the frontend |
+| `OPENROUTER_MODEL` | Configured OpenRouter model; no business code contains its slug |
+| `LLM_REASONING_MODEL` | Validated stronger model reserved for a future explicit escalation policy |
+| `LLM_FALLBACK_MODELS` | Comma-separated OpenRouter fallback model slugs, in priority order |
+| `LLM_TEMPERATURE` | Low deterministic temperature for structured tasks (default `0.1`) |
+| `LLM_MAX_OUTPUT_TOKENS` | Per-request completion-token ceiling |
+| `LLM_TIMEOUT_MS` | Per-request OpenRouter timeout |
+| `LLM_MAX_RETRIES` | Bounded retry count for retryable provider/validation failures |
+| `LLM_MAX_CONCURRENCY` | Fail-fast concurrent LLM-request cap; requests are never buffered in memory |
+| `OLLAMA_BASE_URL` | Loopback-only local Ollama HTTP endpoint |
+| `OLLAMA_MODEL` | Configured local chat model; pull it with Ollama before use |
+| `OLLAMA_TIMEOUT_MS` | Per-request local Ollama timeout |
+| `OLLAMA_EMBEDDING_MODEL` | Configured local embedding model, separate from the chat model |
+| `EMBEDDING_DIMENSIONS` | Required vector length validated before pgvector persistence |
 | `INTEGRATION_MYSQL_*` | Docker integration-fixture only; never read by production services |
 | `CORS_ORIGIN`       | Comma-separated allowed web origins; wildcard is rejected in production |
 | `LOG_LEVEL`         | Pino level: fatal, error, warn, info, debug, or trace                   |
@@ -134,7 +149,7 @@ Repository instructions for AI coding tools live in `AGENTS.md`, `CLAUDE.md`, `.
 
 ## Current limitations
 
-Milestone 0 intentionally has no authentication flow, organization APIs, datasource credential storage, customer database connectivity, schema analysis, LLM integration, SQL generation/execution, cache behavior, queues, vector search, or agent framework.
+No LLM-driven database access, SQL generation/execution, schema analysis workflow, agent framework, or frontend model selection is implemented. The LLM gateway only provides the validated, server-side provider boundary for a future authorized workflow.
 
 ## Next milestone
 

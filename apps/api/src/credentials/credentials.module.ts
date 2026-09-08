@@ -22,6 +22,6 @@ import { EncryptedDatabaseCredentialProvider } from './encrypted-database-creden
       useExisting: EncryptedDatabaseCredentialProvider,
     },
   ],
-  exports: [CREDENTIAL_PROVIDER],
+  exports: [CREDENTIAL_PROVIDER, CredentialEncryptionService],
 })
 export class CredentialsModule {}

@@ -10,6 +10,7 @@ import { ConfigurationModule } from '../config/configuration.module';
 const REDACTED_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
+  'req.headers.x-organization-id',
   'req.body.password',
   'req.body.token',
   'req.body.secret',
@@ -27,6 +28,7 @@ const REDACTED_PATHS = [
   'req.body.connectionString',
   'req.body.connectionUrl',
   'req.body.decryptedPassword',
+  'req.body.specification',
   'res.headers.set-cookie',
   'password',
   'authorization',
@@ -42,9 +44,16 @@ const REDACTED_PATHS = [
   'iv',
   'authTag',
   'DATASOURCE_ENCRYPTION_KEY',
+  'OPENROUTER_API_KEY',
   'connectionString',
   'connectionUrl',
   'decryptedPassword',
+  'specification',
+  'encryptedSpecification',
+  'specificationIv',
+  'specificationAuthTag',
+  'specificationEncryptionVersion',
+  'result',
 ];
 
 @Module({
@@ -55,6 +64,7 @@ const REDACTED_PATHS = [
       useFactory: (config: AppConfigService) => ({
         forRoutes: [{ path: '{*splat}', method: RequestMethod.ALL }],
         pinoHttp: {
+          autoLogging: config.nodeEnv === 'production',
           base: { service: API_SERVICE_NAME },
           level: config.logLevel,
           messageKey: 'message',
@@ -63,6 +73,18 @@ const REDACTED_PATHS = [
             paths: REDACTED_PATHS,
             censor: '[REDACTED]',
           },
+          transport:
+            config.nodeEnv === 'development'
+              ? {
+                  target: 'pino-pretty',
+                  options: {
+                    colorize: true,
+                    ignore: 'pid,hostname',
+                    singleLine: true,
+                    translateTime: 'SYS:standard',
+                  },
+                }
+              : undefined,
           genReqId: (request, response) => {
             const requestId = getOrCreateRequestId(request.headers['x-request-id']);
             response.setHeader('x-request-id', requestId);

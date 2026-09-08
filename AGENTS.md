@@ -1,6 +1,6 @@
 # SchemaIQ agent guide
 
-SchemaIQ is a modular-monolith SaaS foundation for an AI Database Intelligence platform. Implement only explicitly authorized milestones; Milestones 0, 1, 3.5, and 3.6 (CSV Import Frontend) are currently present.
+SchemaIQ is a modular-monolith SaaS foundation for an AI Database Intelligence platform. Implement only explicitly authorized milestones; Milestones 0, 1, 3.5, 3.6 (CSV Import Frontend), the Milestone 5 LLM gateway, and verified datasource knowledge foundation are currently present.
 
 ## Engineering rules
 
@@ -21,6 +21,8 @@ SchemaIQ is a modular-monolith SaaS foundation for an AI Database Intelligence p
 - Never introduce static production customer database credentials into `.env`; every customer operation begins with an organization-scoped `datasourceId`.
 - Never expose datasource secrets (password, SSH password/private key/passphrase, encrypted payload fields) through any controller, DTO, or API response.
 - Always close customer `DataSource` and SSH tunnel resources through the connection manager's lifecycle (invalidate/idle-cleanup/shutdown) — never leave a customer connection or tunnel open outside its managed lifecycle.
+- Browser datasource requests go through the shared `datasourcesApi`; never persist, cache, log, or render customer passwords in the web application.
+- Datasource schema discovery uses `DatabaseConnectionManager` and fixed, parameterized metadata queries only; never accept raw SQL or send customer rows, credentials, or connection details to an LLM.
 
 ## PostgreSQL CSV imports (Milestone 3.5)
 
@@ -34,6 +36,23 @@ SchemaIQ is a modular-monolith SaaS foundation for an AI Database Intelligence p
 - Frontend API calls to the SchemaIQ backend go through `apps/web/lib/api-client.ts` only. Never scatter `fetch(...)` calls across components.
 - Frontend code imports backend enums and response types from `@schemaiq/types` verbatim. Never redefine `DataImportStatus`/`DataImportProcessingMode`/response shapes locally.
 - Status polling (e.g. import detail) uses TanStack Query `refetchInterval` keyed off the resource's own status field, stopped once the status is terminal. Never hand-roll `setInterval`/`clearInterval` for polling.
+
+## LLM gateway foundation (Milestone 5)
+
+- Business modules call `LlmService` / the `LLM_PROVIDER` abstraction; they must never call OpenRouter or another model API directly.
+- Development uses a configured loopback-only Ollama model first, then OpenRouter; other environments use OpenRouter first, then configured Ollama. Resolve cloud models and prompt versions through `LlmModelConfigService`; never put model slugs in business logic.
+- Use `generateStructured` with a Zod schema for extraction and matching. Never persist output that fails its schema validation.
+- Never send customer credentials, connection strings, SSH keys, application secrets, API keys, or authentication tokens to an LLM. Prompts and raw completions are not stored in usage records or logs.
+- LLM usage rows contain only organization/resource identifiers, task/prompt version, provider/model, token totals, latency, result status, and timestamps. Do not add prompt/response columns without an approved retention and privacy decision. The user-requested datasource background analysis is the only exception: its temporary encrypted Markdown is cleared at the terminal state, while its safe final compatibility report is retained for the user to revisit.
+
+## Natural-language SQL generation
+
+- SQL generation never executes SQL or opens a customer database connection. Execution requires its own explicitly authorized milestone.
+- Reject mutation intents. Never trust an LLM table, column, relationship, function, or operator without validation against the selected persisted schema snapshot.
+- Never allow system-schema access from natural-language queries, interpolate literals into generated SQL, or bypass AST/read-only safety validation.
+- Business services never depend directly on Ollama, OpenRouter, or embedding implementations. Use `LlmService` and `EmbeddingService` only.
+- Knowledge is not model training. A mismatched or review-pending specification must never activate RAG knowledge or embeddings.
+- Never embed datasource credentials, connection data, customer rows, PII, CSV contents, or raw specification Markdown. Keep vector operations tenant- and datasource-scoped.
 
 ## Commands
 

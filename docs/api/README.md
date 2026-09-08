@@ -1,6 +1,8 @@
-# CSV Import API
+# SchemaIQ API
 
 The PostgreSQL CSV import API accepts a CSV upload, validates its header and target mapping, then loads it with transactional PostgreSQL `COPY FROM STDIN`.
+
+The datasource analysis API lists databases accessible through an already-saved MySQL datasource and compares one selected database's read-only metadata with a Markdown specification through the configured LLM gateway.
 
 ## API artifacts
 
@@ -27,6 +29,17 @@ Set the Postman collection variables before sending a request:
 5. Cancel only while `QUEUED`; delete only terminal import history.
 
 The API streams the upload and COPY payload; it does not accept CSV text or database credentials in JSON. Targets are validated from PostgreSQL metadata, and protected/system tables are rejected.
+
+## Datasource specification analysis
+
+1. Save and activate a MySQL datasource through the dashboard or datasource API.
+2. `GET /datasources/{id}/databases` lists its accessible non-system databases.
+3. `POST /datasources/{id}/spec-analyses` accepts one database name and up to 15 MiB of Markdown, then returns `202` with a `QUEUED` analysis. Poll `GET /datasources/{id}/spec-analyses/latest` while its status is `QUEUED` or `PROCESSING`; a completed response includes the retained report, compatibility/specification/snapshot identifiers, and a verified score.
+4. `GET /datasources/{id}/specifications/{specificationId}/versions/{versionId}/compatibility` returns the score dimensions, hard-gated status, knowledge eligibility, and finding counts. `GET .../findings` supports paginated `findingType`, `severity`, and `status` filters.
+5. `POST .../knowledge/build` queues a build only for `ELIGIBLE` compatibility; `GET /datasources/{id}/knowledge/status` reports active-version staleness and `POST /datasources/{id}/knowledge/refresh` compares the latest extracted specification against a fresh schema snapshot.
+4. `POST /datasources/{id}/spec-chat` accepts one database name, up to 15 MiB of Markdown, and at most eight short follow-up chat messages. Large files use relevant excerpts per question so the request stays within the LLM context window.
+
+The service validates the database name against the managed connection and reads only bounded `information_schema` metadata (maximum 250 tables and 2,000 columns). It never reads customer rows, accepts SQL, or returns credentials. A background analysis stores Markdown AES-256-GCM encrypted only while processing, then clears it on success or failure; Redis receives IDs only. PostgreSQL retains structured specification versions, schema snapshots, compatibility evidence, and safe reports. Only compatibility-eligible semantic facts become tenant-scoped pgvector knowledge; raw Markdown, credentials, and customer rows are never embedded.
 
 ## Error contract
 

@@ -1,20 +1,386 @@
 openapi: 3.1.0
 info:
-  title: SchemaIQ CSV Import API
+  title: SchemaIQ API
   version: 0.1.0
   description: |
-    Backend API for streamed PostgreSQL CSV bulk imports. An upload is validated against
-    PostgreSQL metadata and loaded atomically with COPY FROM STDIN. Uploads never place
-    CSV contents or database credentials in JSON or the job queue.
+    Backend API for streamed PostgreSQL CSV bulk imports and read-only MySQL datasource
+    analysis. Uploads never place CSV contents or database credentials in JSON or the job queue.
 servers:
   - url: http://localhost:3001/api/v1
     description: Local development
 tags:
   - name: Imports
     description: CSV upload, import status, retry, cancellation, and history.
+  - name: Data Sources
+    description: Read-only database discovery and immediate or queued Markdown specification analysis for saved MySQL data sources.
 security:
   - developmentOrganization: []
 paths:
+  /datasources/{id}/databases:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    get:
+      tags: [Data Sources]
+      summary: List accessible non-system databases for a saved datasource
+      description: Uses the managed datasource connection and `SHOW DATABASES`. System databases are excluded.
+      operationId: listDatasourceDatabases
+      responses:
+        '200':
+          description: Safe database names visible to the configured MySQL user.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DatasourceDatabase'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+  /datasources/{id}/spec-chat:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    post:
+      tags: [Data Sources]
+      summary: Compare Markdown specification chat with selected database metadata
+      description: |
+        Validates the selected database against the managed connection, reads only bounded
+        `information_schema` metadata (maximum 250 tables and 2,000 columns), and sends the
+        current Markdown specification and chat history to the configured LLM provider. The
+        specification, snapshot, and completion are not persisted.
+      operationId: chatAboutDatasourceSpec
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasourceSpecChatRequest'
+      responses:
+        '200':
+          description: Immediate LLM response for the selected database and current conversation.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourceSpecChatResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+  /datasources/{id}/spec-analyses:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    post:
+      tags: [Data Sources]
+      summary: Queue a Markdown specification compatibility analysis
+      description: |
+        Accepts up to 15 MiB of Markdown and immediately returns a durable analysis status.
+        The worker reads bounded `information_schema` metadata only. Redis receives IDs only;
+        the temporary encrypted Markdown source is cleared on a terminal state, while the safe
+        final report remains available for the user to return to.
+      operationId: createDatasourceSpecAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatasourceSpecAnalysisRequest'
+      responses:
+        '202':
+          description: Analysis accepted for background processing.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourceSpecAnalysis'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '413':
+          $ref: '#/components/responses/PayloadTooLargeError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailableError'
+  /datasources/{id}/spec-analyses/latest:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    get:
+      tags: [Data Sources]
+      summary: Get the latest queued or completed specification analysis
+      operationId: getLatestDatasourceSpecAnalysis
+      responses:
+        '200':
+          description: The latest organization-scoped analysis, or `null` when none has been created.
+          headers:
+            x-request-id:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/DatasourceSpecAnalysis'
+                  - type: 'null'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /datasources/{id}/specifications/{specificationId}/versions/{versionId}/compatibility:
+    get:
+      tags: [Data Sources]
+      summary: Get a verified specification compatibility result
+      operationId: getDatasourceSpecificationCompatibility
+      parameters:
+        - $ref: '#/components/parameters/DatasourceId'
+        - $ref: '#/components/parameters/SpecificationId'
+        - $ref: '#/components/parameters/SpecificationVersionId'
+      responses:
+        '200':
+          description: Score dimensions, hard-gated compatibility status, and knowledge eligibility.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourceCompatibility'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /datasources/{id}/specifications/{specificationId}/versions/{versionId}/findings:
+    get:
+      tags: [Data Sources]
+      summary: List paginated compatibility findings
+      operationId: listDatasourceSpecificationFindings
+      parameters:
+        - $ref: '#/components/parameters/DatasourceId'
+        - $ref: '#/components/parameters/SpecificationId'
+        - $ref: '#/components/parameters/SpecificationVersionId'
+        - name: findingType
+          in: query
+          schema: { type: string }
+        - name: severity
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        '200':
+          description: Tenant-scoped findings for the selected compatibility result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourceFindingPage'
+  /datasources/{id}/specifications/{specificationId}/versions/{versionId}/knowledge/build:
+    post:
+      tags: [Data Sources]
+      summary: Queue a knowledge build for an eligible compatibility result
+      operationId: buildDatasourceKnowledge
+      parameters:
+        - $ref: '#/components/parameters/DatasourceId'
+        - $ref: '#/components/parameters/SpecificationId'
+        - $ref: '#/components/parameters/SpecificationVersionId'
+      responses:
+        '202':
+          description: Eligible knowledge build queued.
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /datasources/{id}/knowledge/status:
+    get:
+      tags: [Data Sources]
+      summary: Get active datasource knowledge version and staleness
+      operationId: getDatasourceKnowledgeStatus
+      parameters:
+        - $ref: '#/components/parameters/DatasourceId'
+      responses:
+        '200':
+          description: Active knowledge status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourceKnowledgeStatus'
+  /datasources/{id}/knowledge/refresh:
+    post:
+      tags: [Data Sources]
+      summary: Recheck the latest extracted specification against a fresh schema snapshot
+      operationId: refreshDatasourceKnowledge
+      parameters:
+        - $ref: '#/components/parameters/DatasourceId'
+      responses:
+        '202':
+          description: Compatibility refresh completed; an eligible result can be built into a new knowledge version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatasourceCompatibility'
+  /datasources/{id}/context/search:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    post:
+      tags: [Data Sources]
+      summary: Build a bounded hybrid database context package
+      description: Uses the latest persisted schema snapshot as the source of truth. Active vector and verified knowledge are included only when they reference that exact snapshot; stale sources are reported as `SCHEMA_CHANGED` and excluded.
+      operationId: searchDatasourceContext
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatabaseContextRequest'
+      responses:
+        '200':
+          description: Safe, bounded metadata and verified-knowledge context. No customer rows, credentials, raw specification Markdown, or SQL is returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseContextPackage'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /datasources/{id}/analyze:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    post:
+      tags: [Data Sources]
+      summary: Analyze a database question from a bounded context package
+      description: The LLM receives only the context package built by the context engine. Every returned claim must cite package item IDs.
+      operationId: analyzeDatasource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatabaseContextRequest'
+      responses:
+        '200':
+          description: Structured, evidence-linked analysis without SQL generation or execution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseAnalysis'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '502':
+          description: The model returned invalid or unsupported evidence references.
+  /datasources/{id}/analyze/overview:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    get:
+      tags: [Data Sources]
+      summary: Get deterministic persisted-schema overview metadata
+      operationId: getDatasourceAnalysisOverview
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseContextOverview'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /datasources/{id}/analyze/root-entities:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    get:
+      tags: [Data Sources]
+      summary: List deterministic root-entity candidates
+      description: Scores relationship direction and primary-key metadata only; it does not call the LLM.
+      operationId: getDatasourceRootEntities
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DatabaseRootEntity'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /datasources/{id}/query/classify:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    post:
+      tags: [Data Sources]
+      summary: Classify a natural-language database request
+      description: Uses deterministic rules for clear requests and a bounded structured-model fallback only when ambiguous. It does not access a customer database.
+      operationId: classifyDatasourceQuery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatabaseQueryRequest'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseIntentClassification'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /datasources/{id}/query/generate:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+    post:
+      tags: [Data Sources]
+      summary: Generate a validated read-only SQL preview
+      description: Uses persisted metadata only. The SQL is compiler-produced, parameterized, schema/AST validated, and never executed or sent to a customer database.
+      operationId: generateDatasourceQuery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatabaseQueryRequest'
+      responses:
+        '200':
+          description: A validated SQL preview, a safe rejection/clarification, or an evidence-linked schema analysis for non-data intents. No customer rows are returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DatabaseCopilotResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+  /datasources/{id}/query/{queryId}/validate:
+    parameters:
+      - $ref: '#/components/parameters/DatasourceId'
+      - $ref: '#/components/parameters/GeneratedQueryId'
+    post:
+      tags: [Data Sources]
+      summary: Re-check a generated preview against the latest schema snapshot
+      description: Marks the preview `STALE` when its recorded snapshot is no longer current. It never executes the query.
+      operationId: validateGeneratedDatasourceQuery
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneratedQueryValidation'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
   /imports/csv:
     post:
       tags: [Imports]
@@ -213,6 +579,28 @@ components:
       name: x-organization-id
       description: Development-only organization context. Production authentication is not implemented.
   parameters:
+    DatasourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Saved datasource ID scoped to the requesting organization.
+    SpecificationId:
+      name: specificationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SpecificationVersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ImportId:
       name: id
       in: path
@@ -221,6 +609,14 @@ components:
         type: string
         format: uuid
       description: Import ID scoped to the requesting organization.
+    GeneratedQueryId:
+      name: queryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Generated SQL preview ID scoped to the requesting organization and datasource.
     Page:
       name: page
       in: query
@@ -309,6 +705,368 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    DatasourceDatabase:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 128
+    DatabaseQueryRequest:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 1000 }
+    DatabaseIntentClassification:
+      type: object
+      required: [intent, confidence, entities, metrics, filters, timeRange, requiresRowData]
+      properties:
+        intent:
+          type: string
+          enum: [SCHEMA_QUESTION, BUSINESS_MEANING, RELATIONSHIP_ANALYSIS, SPEC_COMPLIANCE, DATABASE_OVERVIEW, DATA_QUERY, AGGREGATION_QUERY, SQL_EXPLANATION, QUERY_OPTIMIZATION, DOCUMENTATION, UNSUPPORTED_MUTATION, UNKNOWN]
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        entities: { type: array, items: { type: string } }
+        metrics: { type: array, items: { type: string } }
+        filters: { type: array, items: { type: string } }
+        timeRange: { type: [string, 'null'] }
+        requiresRowData: { type: boolean }
+    DatabaseCopilotResponse:
+      oneOf:
+        - $ref: '#/components/schemas/SqlGenerationResult'
+        - type: object
+          required: [supported, intent, confidence, analysis]
+          properties:
+            supported: { const: true }
+            intent: { type: string }
+            confidence: { type: number, minimum: 0, maximum: 1 }
+            analysis: { $ref: '#/components/schemas/DatabaseAnalysis' }
+    SqlGenerationResult:
+      type: object
+      required: [id, status, supported, intent, question, queryPlan, sql, parameters, schemaSnapshotId, knowledgeVersionId, tables, columns, safety, confidence, warnings, reason, clarificationCandidates]
+      properties:
+        id: { type: [string, 'null'], format: uuid }
+        status: { type: string, enum: [VALIDATED, REJECTED, NEEDS_CLARIFICATION, STALE] }
+        supported: { type: boolean }
+        intent: { type: string }
+        question: { type: string }
+        queryPlan: { type: [object, 'null'], description: Redacted plan; literal values are never returned. }
+        sql: { type: [string, 'null'] }
+        parameters:
+          type: array
+          description: Parameter types only; never their values.
+          items: { type: object, required: [type], properties: { type: { type: string, enum: [STRING, NUMBER, BOOLEAN, DATE, DATETIME, NULL] } } }
+        schemaSnapshotId: { type: [string, 'null'], format: uuid }
+        knowledgeVersionId: { type: [string, 'null'], format: uuid }
+        tables: { type: array, items: { type: string } }
+        columns: { type: array, items: { type: string } }
+        safety:
+          type: object
+          required: [readOnly, validated, defaultLimitApplied]
+          properties:
+            readOnly: { type: boolean }
+            validated: { type: boolean }
+            defaultLimitApplied: { type: boolean }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        warnings: { type: array, items: { type: string } }
+        reason: { type: [string, 'null'] }
+        clarificationCandidates: { type: array, items: { type: string } }
+    GeneratedQueryValidation:
+      type: object
+      required: [id, status, schemaSnapshotId]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [VALIDATED, STALE] }
+        schemaSnapshotId: { type: string, format: uuid }
+    DatasourceSpecChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+    DatasourceSpecChatRequest:
+      type: object
+      required: [databaseName, specification, messages]
+      properties:
+        databaseName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        specification:
+          type: string
+          minLength: 1
+          maxLength: 15728640
+          description: Markdown supplied for this request only; it is not persisted. Large files use relevant excerpts per chat request.
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/DatasourceSpecChatMessage'
+    DatasourceSpecChatResponse:
+      type: object
+      required: [databaseName, content]
+      properties:
+        databaseName:
+          type: string
+        content:
+          type: string
+    DatasourceSpecAnalysisRequest:
+      type: object
+      required: [databaseName, specification]
+      properties:
+        databaseName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        specification:
+          type: string
+          minLength: 1
+          maxLength: 15728640
+          description: Markdown temporarily encrypted for the background worker and cleared when it reaches a terminal state.
+    DatasourceSpecAnalysis:
+      type: object
+      required: [id, datasourceId, databaseName, status, result, matchScore, specificationId, specificationVersionId, schemaSnapshotId, compatibilityCheckId, report, errorCode, errorMessage, startedAt, completedAt, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        datasourceId:
+          type: string
+          format: uuid
+        databaseName:
+          type: string
+        status:
+          type: string
+          enum: [QUEUED, PROCESSING, COMPLETED, FAILED]
+        result:
+          type: [string, 'null']
+          description: Retained plain-language summary; no Markdown source or schema snapshot is returned.
+        matchScore:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100
+          description: Estimated schema coverage calculated from matched (100%), partial (50%), and missing (0%) assessable requirements.
+        specificationId:
+          type: [string, 'null']
+          format: uuid
+        specificationVersionId:
+          type: [string, 'null']
+          format: uuid
+        schemaSnapshotId:
+          type: [string, 'null']
+          format: uuid
+        compatibilityCheckId:
+          type: [string, 'null']
+          format: uuid
+        report:
+          oneOf:
+            - $ref: '#/components/schemas/DatasourceSpecAnalysisReport'
+            - type: 'null'
+        errorCode:
+          type: [string, 'null']
+        errorMessage:
+          type: [string, 'null']
+        startedAt:
+          type: [string, 'null']
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    DatasourceCompatibility:
+      type: object
+      required: [id, overallScore, entityScore, fieldScore, relationshipScore, constraintScore, semanticScore, anchorScore, status, knowledgeEligibility, reason, matchedCount, partiallyMatchedCount, missingInDatabaseCount, notMentionedInSpecCount, conflictingCount, needsReviewCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        overallScore: { type: integer, minimum: 0, maximum: 100 }
+        entityScore: { type: integer, minimum: 0, maximum: 100 }
+        fieldScore: { type: integer, minimum: 0, maximum: 100 }
+        relationshipScore: { type: integer, minimum: 0, maximum: 100 }
+        constraintScore: { type: integer, minimum: 0, maximum: 100 }
+        semanticScore: { type: integer, minimum: 0, maximum: 100 }
+        anchorScore: { type: integer, minimum: 0, maximum: 100 }
+        status: { type: string, enum: [STRONG_MATCH, MATCHED, PARTIALLY_MATCHED, MISMATCH, NEEDS_REVIEW, NOT_RELEVANT] }
+        knowledgeEligibility: { type: string, enum: [ELIGIBLE, PENDING_REVIEW, NOT_ELIGIBLE] }
+        reason: { type: string }
+        matchedCount: { type: integer }
+        partiallyMatchedCount: { type: integer }
+        missingInDatabaseCount: { type: integer }
+        notMentionedInSpecCount: { type: integer }
+        conflictingCount: { type: integer }
+        needsReviewCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+    DatasourceFindingPage:
+      type: object
+      required: [items, page, limit, total]
+      properties:
+        items:
+          type: array
+          items: { type: object }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+    DatasourceKnowledgeStatus:
+      type: object
+      required: [activeKnowledgeVersion, specificationVersionId, schemaSnapshotId, status, knowledgeCount, chunkCount, staleness]
+      properties:
+        activeKnowledgeVersion: { type: [string, 'null'], format: uuid }
+        specificationVersionId: { type: [string, 'null'], format: uuid }
+        schemaSnapshotId: { type: [string, 'null'], format: uuid }
+        status: { type: [string, 'null'], enum: [BUILDING, READY, ACTIVE, FAILED, SUPERSEDED, null] }
+        knowledgeCount: { type: integer }
+        chunkCount: { type: integer }
+        staleness: { type: string, enum: [CURRENT, SPEC_CHANGED, SCHEMA_CHANGED, REBUILDING, FAILED] }
+    DatasourceSpecAnalysisReport:
+      type: object
+      required: [summary, requirements, assumptions]
+      properties:
+        summary:
+          type: string
+        requirements:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            required: [requirement, status, evidence]
+            properties:
+              requirement:
+                type: string
+              status:
+                type: string
+                enum: [MATCHED, PARTIAL, MISSING]
+              evidence:
+                type: string
+        assumptions:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+    DatabaseContextRequest:
+      type: object
+      required: [query, purpose]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 1000 }
+        purpose:
+          type: string
+          enum: [SCHEMA_QUESTION, DATABASE_EXPLANATION, COMPATIBILITY_INVESTIGATION, DOCUMENTATION_GENERATION, FUTURE_SQL_GENERATION]
+        requestedTables:
+          type: array
+          maxItems: 12
+          items: { type: string, minLength: 1, maxLength: 128 }
+        requestedColumns:
+          type: array
+          maxItems: 24
+          items: { type: string, minLength: 1, maxLength: 128 }
+        requestedConcepts:
+          type: array
+          maxItems: 12
+          items: { type: string, minLength: 1, maxLength: 128 }
+    DatabaseContextPackage:
+      type: object
+      required: [datasourceId, query, purpose, schemaSnapshotId, knowledgeVersionId, staleness, tables, relationships, items, estimatedTokens, truncated, omittedSources]
+      properties:
+        datasourceId: { type: string, format: uuid }
+        query: { type: string }
+        purpose: { type: string }
+        schemaSnapshotId: { type: string, format: uuid }
+        knowledgeVersionId: { type: [string, 'null'], format: uuid }
+        staleness: { type: string, enum: [CURRENT, SCHEMA_CHANGED] }
+        estimatedTokens: { type: integer, minimum: 0 }
+        truncated: { type: boolean }
+        omittedSources:
+          type: array
+          items: { type: string, enum: [KNOWLEDGE, VECTOR_KNOWLEDGE, COMPATIBILITY_FINDING] }
+        tables:
+          type: array
+          items:
+            type: object
+            required: [name, type, columns, primaryKey, uniqueConstraints]
+            properties:
+              name: { type: string }
+              type: { type: string }
+              columns:
+                type: array
+                items:
+                  type: object
+                  required: [name, type, nullable]
+                  properties:
+                    name: { type: string }
+                    type: { type: string }
+                    nullable: { type: boolean }
+              primaryKey: { type: array, items: { type: string } }
+              uniqueConstraints: { type: array, items: { type: array, items: { type: string } } }
+        relationships:
+          type: array
+          items:
+            type: object
+            required: [name, sourceTable, sourceColumn, targetTable, targetColumn, constraintName]
+            properties:
+              name: { type: string }
+              sourceTable: { type: string }
+              sourceColumn: { type: string }
+              targetTable: { type: string }
+              targetColumn: { type: string }
+              constraintName: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, kind, source, authority, confidence, score, verified, exactMatch, tableName, columnName, relationshipName, content]
+            properties:
+              id: { type: string }
+              kind: { type: string, enum: [TABLE, COLUMN, RELATIONSHIP, CONSTRAINT, KNOWLEDGE, FINDING] }
+              source: { type: string, enum: [SCHEMA_SNAPSHOT, KNOWLEDGE, VECTOR_KNOWLEDGE, COMPATIBILITY_FINDING] }
+              authority: { type: string, enum: [ACTUAL_SCHEMA, USER_CONFIRMED, HYBRID_VERIFIED, VERIFIED_SPECIFICATION, DATABASE_SEMANTIC, LLM_DERIVED, INFERRED] }
+              confidence: { type: number, minimum: 0, maximum: 1 }
+              score: { type: number }
+              verified: { type: boolean }
+              exactMatch: { type: boolean }
+              tableName: { type: [string, 'null'] }
+              columnName: { type: [string, 'null'] }
+              relationshipName: { type: [string, 'null'] }
+              content: { type: [string, 'null'] }
+    DatabaseContextOverview:
+      type: object
+      required: [datasourceId, schemaSnapshotId, knowledgeVersionId, staleness, tableCount, relationshipCount, truncatedSchema]
+      properties:
+        datasourceId: { type: string, format: uuid }
+        schemaSnapshotId: { type: string, format: uuid }
+        knowledgeVersionId: { type: [string, 'null'], format: uuid }
+        staleness: { type: string, enum: [CURRENT, SCHEMA_CHANGED] }
+        tableCount: { type: integer, minimum: 0 }
+        relationshipCount: { type: integer, minimum: 0 }
+        truncatedSchema: { type: boolean }
+    DatabaseRootEntity:
+      type: object
+      required: [tableName, score, inboundRelationshipCount, outboundRelationshipCount, primaryKey]
+      properties:
+        tableName: { type: string }
+        score: { type: integer, minimum: 0 }
+        inboundRelationshipCount: { type: integer, minimum: 0 }
+        outboundRelationshipCount: { type: integer, minimum: 0 }
+        primaryKey: { type: array, items: { type: string } }
+    DatabaseAnalysis:
+      type: object
+      required: [context, answer, claims, uncertainties]
+      properties:
+        context: { $ref: '#/components/schemas/DatabaseContextPackage' }
+        answer: { type: string }
+        claims:
+          type: array
+          items:
+            type: object
+            required: [text, evidenceIds]
+            properties:
+              text: { type: string }
+              evidenceIds: { type: array, minItems: 1, items: { type: string } }
+        uncertainties: { type: array, items: { type: string } }
     DataImport:
       type: object
       required:

@@ -22,6 +22,10 @@ const validEnvironment = {
   MYSQL_CUSTOMER_POOL_SIZE: '3',
   MYSQL_CONNECT_TIMEOUT_MS: '5000',
   ALLOW_LOCAL_DATASOURCES: 'false',
+  LLM_PROVIDER: 'ollama',
+  OLLAMA_MODEL: 'qwen3:8b',
+  OLLAMA_EMBEDDING_MODEL: 'nomic-embed-text',
+  OPENROUTER_API_KEY: 'test-openrouter-api-key',
   CORS_ORIGIN: 'http://localhost:3000',
   LOG_LEVEL: 'info',
 };
@@ -44,6 +48,59 @@ describe('validateEnvironment', () => {
       environment.CSV_IMPORT_QUEUE_THRESHOLD_BYTES,
     );
     expect(environment.CSV_IMPORT_WORKER_CONCURRENCY).toBeGreaterThan(0);
+  });
+
+  it('provides validated, bounded LLM defaults', () => {
+    const environment = validateEnvironment(validEnvironment);
+
+    expect(environment).toMatchObject({
+      OPENROUTER_MODEL: 'nvidia/nemotron-3.5-lightning',
+      LLM_MAX_CONCURRENCY: 4,
+      LLM_PROVIDER: 'ollama',
+      LLM_TEMPERATURE: 0.1,
+    });
+  });
+
+  it('provides bounded database-context defaults', () => {
+    const environment = validateEnvironment(validEnvironment);
+
+    expect(environment).toMatchObject({
+      DATABASE_CONTEXT_MAX_ESTIMATED_TOKENS: 1_000,
+      DATABASE_CONTEXT_MAX_RELATIONSHIP_DEPTH: 1,
+      DATABASE_CONTEXT_MIN_VECTOR_SIMILARITY: 0.45,
+    });
+  });
+
+  it('provides bounded SQL-generation defaults', () => {
+    const environment = validateEnvironment(validEnvironment);
+
+    expect(environment).toMatchObject({
+      SQL_DEFAULT_LIMIT: 100,
+      SQL_MAX_FILTER_DEPTH: 3,
+      SQL_MAX_LIMIT: 1_000,
+      SQL_MAX_TABLES: 4,
+    });
+  });
+
+  it('rejects a SQL default limit above its maximum', () => {
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, SQL_DEFAULT_LIMIT: '1001', SQL_MAX_LIMIT: '1000' }),
+    ).toThrow('SQL_DEFAULT_LIMIT');
+  });
+
+  it('rejects a default model repeated in the approved fallback list', () => {
+    expect(() =>
+      validateEnvironment({
+        ...validEnvironment,
+        LLM_FALLBACK_MODELS: 'nvidia/nemotron-3.5-lightning',
+      }),
+    ).toThrow('LLM_FALLBACK_MODELS');
+  });
+
+  it('rejects a non-loopback Ollama endpoint', () => {
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, OLLAMA_BASE_URL: 'http://ollama.example.com:11434' }),
+    ).toThrow('OLLAMA_BASE_URL');
   });
 
   it('rejects COPY-unsafe CSV delimiters', () => {
@@ -99,5 +156,13 @@ describe('validateEnvironment', () => {
         CORS_ORIGIN: 'https://app.schemaiq.example',
       }),
     ).not.toThrow();
+  });
+
+  it('requires the selected provider credentials only', () => {
+    const localOnly = { ...validEnvironment, OPENROUTER_API_KEY: '' };
+    expect(() => validateEnvironment(localOnly)).not.toThrow();
+    expect(() => validateEnvironment({ ...localOnly, LLM_PROVIDER: 'openrouter' })).toThrow(
+      'OPENROUTER_API_KEY',
+    );
   });
 });

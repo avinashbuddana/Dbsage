@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, importsApi } from './api-client';
+import { DatasourceConnectionMode, DatasourceType } from '@schemaiq/types';
+
+import { ApiError, datasourcesApi, importsApi } from './api-client';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -90,6 +92,129 @@ describe('importsApi', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
 
     await expect(importsApi.remove('org-1', 'import-1')).resolves.toBeUndefined();
+  });
+});
+
+describe('datasourcesApi', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends a direct MySQL connection test with the organization header', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ databaseType: 'MYSQL', latencyMs: 18, success: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await datasourcesApi.testCandidate('org-1', {
+      connectionMode: DatasourceConnectionMode.Direct,
+      databaseName: 'application',
+      databasePassword: 'test-password',
+      databaseType: DatasourceType.MySql,
+      host: 'mysql.example.com',
+      port: 3306,
+      sslEnabled: true,
+      username: 'schemaiq_reader',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/datasources/test-connection');
+    expect((init.headers as Record<string, string>)['x-organization-id']).toBe('org-1');
+    expect(JSON.parse(init.body as string)).toEqual({
+      connectionMode: 'DIRECT',
+      databaseName: 'application',
+      databasePassword: 'test-password',
+      databaseType: 'MYSQL',
+      host: 'mysql.example.com',
+      port: 3306,
+      sslEnabled: true,
+      username: 'schemaiq_reader',
+    });
+  });
+
+  it('lists databases, queues persisted analysis, and submits the in-memory follow-up chat payload', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([{ name: 'vapor' }]))
+      .mockResolvedValueOnce(jsonResponse({
+        completedAt: null,
+        createdAt: '2026-09-06T00:00:00.000Z',
+        databaseName: 'vapor',
+        datasourceId: 'source-1',
+        errorCode: null,
+        errorMessage: null,
+        id: 'analysis-1',
+        result: null,
+        startedAt: null,
+        status: 'QUEUED',
+      }))
+      .mockResolvedValueOnce(jsonResponse({ content: 'The schema is compatible.', databaseName: 'vapor' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(datasourcesApi.databases('org-1', 'source-1')).resolves.toEqual([{ name: 'vapor' }]);
+    await expect(
+      datasourcesApi.createSpecAnalysis('org-1', 'source-1', {
+        databaseName: 'vapor',
+        specification: '# Customer requirements',
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: 'analysis-1', status: 'QUEUED' }));
+    await expect(
+      datasourcesApi.specChat('org-1', 'source-1', {
+        databaseName: 'vapor',
+        messages: [{ content: 'Is this compatible?', role: 'user' }],
+        specification: '# Customer requirements',
+      }),
+    ).resolves.toEqual({ content: 'The schema is compatible.', databaseName: 'vapor' });
+
+    const [databaseUrl, databaseInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(databaseUrl).toContain('/datasources/source-1/databases');
+    expect((databaseInit.headers as Record<string, string>)['x-organization-id']).toBe('org-1');
+    const [analysisUrl, analysisInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(analysisUrl).toContain('/datasources/source-1/spec-analyses');
+    expect(JSON.parse(analysisInit.body as string)).toEqual({
+      databaseName: 'vapor',
+      specification: '# Customer requirements',
+    });
+    const [chatUrl, chatInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect(chatUrl).toContain('/datasources/source-1/spec-chat');
+    expect(JSON.parse(chatInit.body as string)).toEqual({
+      databaseName: 'vapor',
+      messages: [{ content: 'Is this compatible?', role: 'user' }],
+      specification: '# Customer requirements',
+    });
+  });
+
+  it('loads compatibility and findings, then starts a verified knowledge build', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ overallScore: 90, status: 'STRONG_MATCH' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [], limit: 25, page: 1, total: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'knowledge-1', status: 'BUILDING' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await datasourcesApi.compatibility('org-1', 'source-1', 'spec-1', 'version-1');
+    await datasourcesApi.findings('org-1', 'source-1', 'spec-1', 'version-1', { limit: 25, page: 1 });
+    await datasourcesApi.buildKnowledge('org-1', 'source-1', 'spec-1', 'version-1');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/datasources/source-1/specifications/spec-1/versions/version-1/compatibility');
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('/findings?limit=25&page=1');
+    expect(fetchMock.mock.calls[2]?.[0]).toContain('/knowledge/build');
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({ method: 'POST' });
+  });
+
+  it('submits a database question to generate a SQL preview', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      clarificationCandidates: [], columns: ['id'], confidence: 0.95, id: 'query-1', intent: 'DATA_QUERY',
+      knowledgeVersionId: null, parameters: [], queryPlan: {}, question: 'Show recent users', reason: null,
+      safety: { defaultLimitApplied: true, readOnly: true, validated: true }, schemaSnapshotId: 'snapshot-1',
+      sql: 'SELECT `id` FROM `users` LIMIT 100', status: 'VALIDATED', supported: true, tables: ['users'], warnings: [],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await datasourcesApi.generateQuery('org-1', 'source-1', { question: 'Show recent users' });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/datasources/source-1/query/generate');
+    expect(init).toMatchObject({ method: 'POST' });
+    expect(JSON.parse(init.body as string)).toEqual({ question: 'Show recent users' });
   });
 });
 

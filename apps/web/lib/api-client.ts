@@ -1,4 +1,8 @@
 import type {
+  ConnectionTestResult,
+  DatabaseSpecFindingSeverity,
+  DatabaseSpecFindingStatus,
+  DatabaseSpecFindingType,
   DataImportApiResponse,
   DataImportMode,
   DataImportRowErrorResponse,
@@ -9,6 +13,20 @@ import type {
   ImportTargetSchemaResponse,
   ImportTargetTableResponse,
   PaginatedDataImportsResponse,
+  DatasourceConnectionMode,
+  DatasourceDatabaseResponse,
+  DatasourceCompatibilityResponse,
+  DatabaseCopilotResponse,
+  DatasourceKnowledgeStatusResponse,
+  DatasourceKnowledgeVersionResponse,
+  DatasourceSpecAnalysisInput,
+  DatasourceSpecAnalysisResponse,
+  DatasourceResponse,
+  DatasourceSpecChatInput,
+  DatasourceSpecChatResponse,
+  DatasourceStatus,
+  DatasourceType,
+  PaginatedDatasourceSpecificationFindingsResponse,
 } from '@schemaiq/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api/v1';
@@ -141,6 +159,26 @@ export interface CreateImportResult {
   data: DataImportApiResponse;
 }
 
+export interface ListDatasourceFindingsParams {
+  page: number;
+  limit: number;
+  findingType?: DatabaseSpecFindingType;
+  severity?: DatabaseSpecFindingSeverity;
+  status?: DatabaseSpecFindingStatus;
+}
+
+export interface MysqlDatasourceInput {
+  name: string;
+  databaseType: DatasourceType.MySql;
+  connectionMode: DatasourceConnectionMode.Direct;
+  host: string;
+  port: number;
+  databaseName: string;
+  username: string;
+  databasePassword: string;
+  sslEnabled: boolean;
+}
+
 export const importsApi = {
   cancel(organizationId: string | null, id: string): Promise<DataImportApiResponse> {
     return apiFetch(`/imports/${id}/cancel`, { method: 'POST', organizationId });
@@ -250,6 +288,169 @@ export const importsApi = {
         );
       };
       xhr.send(formData);
+    });
+  },
+};
+
+export const datasourcesApi = {
+  buildKnowledge(
+    organizationId: string | null,
+    datasourceId: string,
+    specificationId: string,
+    versionId: string,
+  ): Promise<DatasourceKnowledgeVersionResponse> {
+    return apiFetch(
+      `/datasources/${datasourceId}/specifications/${specificationId}/versions/${versionId}/knowledge/build`,
+      { method: 'POST', organizationId },
+    );
+  },
+
+  compatibility(
+    organizationId: string | null,
+    datasourceId: string,
+    specificationId: string,
+    versionId: string,
+    signal?: AbortSignal,
+  ): Promise<DatasourceCompatibilityResponse> {
+    return apiFetch(
+      `/datasources/${datasourceId}/specifications/${specificationId}/versions/${versionId}/compatibility`,
+      { organizationId, signal },
+    );
+  },
+
+  createSpecAnalysis(
+    organizationId: string | null,
+    id: string,
+    input: DatasourceSpecAnalysisInput,
+  ): Promise<DatasourceSpecAnalysisResponse> {
+    return apiFetch(`/datasources/${id}/spec-analyses`, {
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      organizationId,
+    });
+  },
+
+  generateQuery(
+    organizationId: string | null,
+    datasourceId: string,
+    input: { question: string },
+  ): Promise<DatabaseCopilotResponse> {
+    return apiFetch(`/datasources/${datasourceId}/query/generate`, {
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      organizationId,
+    });
+  },
+
+  databases(organizationId: string | null, id: string): Promise<DatasourceDatabaseResponse[]> {
+    return apiFetch(`/datasources/${id}/databases`, { organizationId });
+  },
+
+  create(organizationId: string | null, input: MysqlDatasourceInput): Promise<DatasourceResponse> {
+    return apiFetch('/datasources', {
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      organizationId,
+    });
+  },
+
+  findings(
+    organizationId: string | null,
+    datasourceId: string,
+    specificationId: string,
+    versionId: string,
+    params: ListDatasourceFindingsParams,
+    signal?: AbortSignal,
+  ): Promise<PaginatedDatasourceSpecificationFindingsResponse> {
+    const query = buildQuery({
+      findingType: params.findingType,
+      limit: params.limit,
+      page: params.page,
+      severity: params.severity,
+      status: params.status,
+    });
+    return apiFetch(
+      `/datasources/${datasourceId}/specifications/${specificationId}/versions/${versionId}/findings${query}`,
+      { organizationId, signal },
+    );
+  },
+
+  knowledgeStatus(
+    organizationId: string | null,
+    datasourceId: string,
+    signal?: AbortSignal,
+  ): Promise<DatasourceKnowledgeStatusResponse> {
+    return apiFetch(`/datasources/${datasourceId}/knowledge/status`, { organizationId, signal });
+  },
+
+  list(organizationId: string | null): Promise<DatasourceResponse[]> {
+    return apiFetch('/datasources', { organizationId });
+  },
+
+  latestSpecAnalysis(
+    organizationId: string | null,
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<DatasourceSpecAnalysisResponse | null> {
+    return apiFetch(`/datasources/${id}/spec-analyses/latest`, { organizationId, signal });
+  },
+
+  refreshKnowledge(
+    organizationId: string | null,
+    datasourceId: string,
+  ): Promise<DatasourceCompatibilityResponse> {
+    return apiFetch(`/datasources/${datasourceId}/knowledge/refresh`, {
+      method: 'POST',
+      organizationId,
+    });
+  },
+
+  remove(organizationId: string | null, id: string): Promise<void> {
+    return apiFetch(`/datasources/${id}`, { method: 'DELETE', organizationId });
+  },
+
+  specChat(
+    organizationId: string | null,
+    id: string,
+    input: DatasourceSpecChatInput,
+  ): Promise<DatasourceSpecChatResponse> {
+    return apiFetch(`/datasources/${id}/spec-chat`, {
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      organizationId,
+    });
+  },
+
+  testCandidate(
+    organizationId: string | null,
+    input: Omit<MysqlDatasourceInput, 'name'>,
+  ): Promise<ConnectionTestResult> {
+    return apiFetch('/datasources/test-connection', {
+      body: JSON.stringify(input),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      organizationId,
+    });
+  },
+
+  testSaved(organizationId: string | null, id: string): Promise<ConnectionTestResult> {
+    return apiFetch(`/datasources/${id}/test`, { method: 'POST', organizationId });
+  },
+
+  updateStatus(
+    organizationId: string | null,
+    id: string,
+    status: DatasourceStatus.Active | DatasourceStatus.Disabled,
+  ): Promise<DatasourceResponse> {
+    return apiFetch(`/datasources/${id}`, {
+      body: JSON.stringify({ status }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'PATCH',
+      organizationId,
     });
   },
 };

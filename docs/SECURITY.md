@@ -2,9 +2,25 @@
 
 ## Secrets
 
-Never commit, log, or return secrets. Environment configuration is validated at startup and accessed through `AppConfigService`. Logs explicitly redact authorization, cookies, passwords, tokens, secrets, API keys, database passwords, SSH passwords, private keys and their passphrases, encrypted payload fields (`encryptedValue`, `iv`, `authTag`), `DATASOURCE_ENCRYPTION_KEY`, and connection strings.
+Never commit, log, or return secrets. Environment configuration is validated at startup and accessed through `AppConfigService`. Logs explicitly redact authorization, cookies, passwords, tokens, secrets, API keys, database passwords, SSH passwords, private keys and their passphrases, encrypted payload fields (`encryptedValue`, `iv`, `authTag`), uploaded Markdown and its encrypted analysis fields, `DATASOURCE_ENCRYPTION_KEY`, and connection strings.
 
 Production errors return a fixed envelope with a request ID. They do not expose stack traces, file paths, SQL driver details, environment values, credentials, or database URLs.
+
+## LLM gateway privacy
+
+`OPENROUTER_API_KEY` is a server-only startup secret. It is validated by Zod, accessed only through `AppConfigService`, added to Pino redaction, and used solely as the outbound OpenRouter bearer credential. It is never exposed by an API, included in Redis payloads, audit metadata, usage records, exception messages, or frontend code.
+
+`OLLAMA_BASE_URL` is configuration, not user input, and is validated to loopback HTTP (`127.0.0.1`, `::1`, or `localhost`) before startup. Development uses configured Ollama first; other environments use it after retryable OpenRouter failures. It cannot be configured to send customer metadata to an arbitrary remote host.
+
+LLM calls flow only through `LlmService` and the injected `LLM_PROVIDER` interface. The direct spec-chat and queued spec-analysis workflows supply only the user-provided Markdown and a bounded, read-only metadata snapshot of the selected database; they have no dependency on datasource credential resolution, customer connection management, or TypeORM customer connections. `LlmDataPolicyService` rejects recognizable private-key blocks, credential-bearing database URLs, and inline secret assignments before a request is sent. This is defense in depth, not an authorization substitute: business modules must never construct prompts from credentials, customer rows, or unrelated customer data.
+
+`llm_usage` records task/prompt version, provider/model, token totals, latency, success, resource IDs, and timestamps only. It never stores an API key, prompt, completion, raw provider error, database password, connection URL, SSH credential, or encryption key. Structured output is Zod-validated before a business service receives it; invalid responses are not persistable.
+
+## Verified datasource knowledge and embeddings
+
+Compatibility is a gate, not a training process. `MISMATCH` and `NOT_RELEVANT` specifications are retained only as history/findings and cannot activate knowledge or vector chunks; `PARTIALLY_MATCHED` and `NEEDS_REVIEW` remain pending review. Knowledge versions are auditable through both their specification version and schema snapshot, and activation scopes every structured/vector record to organization and datasource.
+
+Embeddings receive only verified semantic schema/specification facts: table/field/relationship mappings, constraints, and unmet requirements. They never receive customer rows, CSV data, PII, raw Markdown, passwords, connection URLs, SSH credentials, tokens, or encryption keys. Content-hash reuse is scoped to the same organization and datasource, preventing cross-tenant vector reuse.
 
 ## Internal database
 
@@ -25,6 +41,10 @@ Customer database passwords and SSH credentials are encrypted with AES-256-GCM (
 `DATASOURCE_ENCRYPTION_KEY` is a base64-encoded 32-byte key validated at application startup (`environment.ts`); an invalid or missing key fails the app to start rather than generating or defaulting a key. It is never logged and is included in the Pino redaction list below.
 
 The rest of the application depends only on the `CredentialProvider` interface, never `EncryptedDatabaseCredentialProvider` directly, so swapping in an external secret provider later does not require touching callers. Credentials are decrypted only immediately before a connection is built (`DatasourceConfigResolver`) and are never cached, logged, put in audit metadata, or returned from any API response — `toResponse()` in `DatasourcesService` explicitly whitelists safe fields rather than serializing entities.
+
+The direct-MySQL browser form submits the password only through the shared datasource API client. It does not place credentials in local storage, query-cache data, rendered lists, or client logs, and clears the form after a successful save.
+
+Spec chat and queued analysis accept only a Markdown file of at most 15 MiB. Only their JSON routes have a 32 MiB parser limit; all other JSON routes remain capped at 100 KB. For a large file, deterministic relevance selection limits the context sent to the model. A queued analysis temporarily stores the Markdown AES-256-GCM encrypted using the existing datasource encryption key so the worker can finish after the browser leaves; it clears every encrypted source field on either terminal state. Redis receives IDs only. The safe status, structured specification requirements, bounded metadata schema snapshot, compatibility evidence, and final report are retained for audit/recheck; raw Markdown and customer rows are never returned, logged, or added to audit metadata. The API validates database names against `SHOW DATABASES`, uses parameterized fixed queries against `information_schema`, excludes system databases, and caps the snapshot at 250 tables / 2,000 columns. Audit records contain only IDs, database name, and safe state metadata.
 
 They must never be sent to LLM providers or appear in logs, errors, audit entries, or analytics.
 
@@ -58,21 +78,24 @@ Customer MySQL connections are never created ad hoc: `DatabaseConnectionManager`
 
 SchemaIQ customers should create a dedicated MySQL user for SchemaIQ with only `SELECT` and `SHOW VIEW` privileges (future schema-introspection milestones will also need `INFORMATION_SCHEMA` visibility). Do not grant `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, or `CREATE`. SchemaIQ does not create database users automatically.
 
-## Future query safety
+## Safe SQL generation
 
 ```text
-LLM
- ↓
-SQL Parser
- ↓
-Policy Validation
- ↓
-Schema Validation
- ↓
-DatabaseConnector
+untrusted question → structured plan → schema/FK/sensitive-column validation
+  → parameterized compiler → SQL AST validation → validated preview only
 ```
 
-LLMs will never directly control database connections. V1 customer access will be read-only and enforced outside the model.
+Generated queries are SELECT-only previews; this milestone never opens a customer connection or executes SQL. The intent classifier rejects mutation language before planning. The planner sees only a bounded, tenant-scoped `DatabaseContextPackage`; raw rows, credentials, and connection details are never provided. Model output cannot name arbitrary identifiers: table/column/foreign-key joins are validated against the selected current snapshot before compilation. Relative dates use application-resolved UTC boundaries rather than model-invented dates.
+
+The MySQL compiler quotes identifiers only after validation and emits every literal, limit, and offset as a `?` parameter. `GeneratedQueryEntity` stores a redacted plan and parameter type metadata, never raw parameter values. Obvious credential columns (`password`, `secret`, `token`, API key, private key, OTP/PIN/CVV variants) are blocked in projection and filtering; ordinary PII-like fields are marked for future permission policy rather than silently over-blocked.
+
+`node-sql-parser` parses the compiled SQL as defense in depth. The policy rejects multiple statements, non-SELECT ASTs, locking reads, CTEs/subqueries unless separately enabled, comments, file operations, dangerous MySQL functions (`LOAD_FILE`, `BENCHMARK`, `SLEEP`, lock functions), and `information_schema`, `mysql`, `performance_schema`, or `sys`. Prompt-injection text in the question or retrieved specification context is explicitly delimited as untrusted data and cannot bypass deterministic validation.
+
+## Hybrid context retrieval
+
+Database-context endpoints read persisted schema snapshots and verified knowledge from the internal PostgreSQL database only; they never reconnect to the customer database, query customer rows, or return credentials. Every lookup is scoped by organization and datasource in the same repository query. pgvector similarity queries additionally require the active knowledge-version ID, active status, and configured embedding dimension.
+
+The newest persisted snapshot is authoritative. If an active knowledge version points to another snapshot, the response is marked `SCHEMA_CHANGED` and old knowledge/chunks/findings are excluded. Bounded packages contain only safe schema metadata and verified findings. The optional analyzer receives only that package through `LlmService`; its structured claims must cite package item IDs, and prompts/completions are neither logged nor persisted.
 
 ## Tenant isolation
 

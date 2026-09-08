@@ -1,6 +1,6 @@
 # SchemaIQ
 
-SchemaIQ is an AI Database Intelligence platform. The implemented foundation includes Milestones 0, 1, the explicitly authorized Milestone 3.5 CSV backend, and Milestone 3.6 (CSV Import Frontend). Do not implement future milestones unless explicitly requested.
+SchemaIQ is an AI Database Intelligence platform. The implemented foundation includes Milestones 0, 1, the explicitly authorized Milestone 3.5 CSV backend, Milestone 3.6 (CSV Import Frontend), the Milestone 5 LLM gateway, and verified datasource knowledge foundation. Do not implement future milestones unless explicitly requested.
 
 ## Architecture
 
@@ -31,6 +31,8 @@ Future work includes schema introspection, relationship discovery, natural-langu
 - Never introduce static production customer database credentials into `.env`; every customer operation begins with an organization-scoped `datasourceId`.
 - Never expose datasource secrets (password, SSH password/private key/passphrase, `encryptedValue`, `iv`, `authTag`) through any controller, DTO, or API response.
 - Always close customer `DataSource` and SSH tunnel resources through `DatabaseConnectionManager`'s lifecycle (invalidate/idle-cleanup/shutdown) — never leave a customer connection or tunnel open outside its managed lifecycle.
+- Browser datasource requests go through the shared `datasourcesApi`; never persist, cache, log, or render customer passwords in the web application.
+- Datasource schema discovery uses `DatabaseConnectionManager` and fixed, parameterized metadata queries only; never accept raw SQL or send customer rows, credentials, or connection details to an LLM.
 
 ## PostgreSQL CSV imports (Milestone 3.5)
 
@@ -43,6 +45,22 @@ Future work includes schema introspection, relationship discovery, natural-langu
 - Frontend API calls to the SchemaIQ backend go through `apps/web/lib/api-client.ts` only. Never scatter `fetch(...)` calls across components.
 - Frontend code imports backend enums and response types from `@schemaiq/types` verbatim. Never redefine `DataImportStatus`/`DataImportProcessingMode`/response shapes locally.
 - Status polling (e.g. import detail) uses TanStack Query `refetchInterval` keyed off the resource's own status field, stopped once the status is terminal. Never hand-roll `setInterval`/`clearInterval` for polling.
+
+## LLM gateway foundation (Milestone 5)
+
+- All application model calls use `LlmService` and the injected `LLM_PROVIDER` interface. OpenRouter-specific request code stays in `OpenRouterLlmProvider`; local fallback request code stays in `OllamaLlmProvider`.
+- Resolve task model, temperature, output limit, fallback list, and prompt version through `LlmModelConfigService`; never hardcode model slugs in business modules.
+- Structured work uses `generateStructured` with a Zod schema and provider-native JSON-schema response formats. Invalid output is retried only within the configured bound and is never returned for persistence.
+- Never put database credentials, connection strings, SSH keys, API keys, encryption keys, or authentication tokens in LLM messages. Do not log prompts/responses. The user-requested datasource background analysis may retain its final report only; its encrypted Markdown source is cleared when processing reaches a terminal state.
+- Business modules use `LlmService` and `EmbeddingService`, never Ollama/OpenRouter provider implementations directly.
+- Compatibility is verified before knowledge is active. Mismatched specs are history and findings, never trusted RAG knowledge.
+- Never call knowledge refresh model training and never embed datasource secrets, customer rows, CSV contents, or PII.
+
+## Natural-language SQL generation
+
+- Never execute generated SQL or use `DatabaseConnectionManager` during generation. Execution is a separate milestone.
+- Mutation intents, system schemas, secret columns, unvalidated identifiers, and raw literal interpolation are forbidden.
+- Every generated preview must use a schema-validated structured plan, parameterized compiler, and SQL AST/read-only safety validation.
 
 ## Completion
 

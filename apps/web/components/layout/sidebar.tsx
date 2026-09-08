@@ -6,9 +6,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const NAV_ITEMS = [
-  { comingSoon: false, href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
-  { comingSoon: true, href: '/dashboard/data-sources', icon: Database, label: 'Data Sources' },
-  { comingSoon: false, href: '/dashboard/imports', icon: UploadCloud, label: 'Data Imports' },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+  { href: '/dashboard/data-sources', icon: Database, label: 'Data Sources' },
+  { href: '/dashboard/imports', icon: UploadCloud, label: 'Data Imports' },
 ] as const;
 
 interface SidebarProps {
@@ -40,11 +40,6 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                   <Icon className="h-4 w-4" aria-hidden="true" />
                   {item.label}
                 </span>
-                {item.comingSoon && (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-500">
-                    Soon
-                  </span>
-                )}
               </Link>
             </li>
           );

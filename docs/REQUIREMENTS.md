@@ -11,8 +11,8 @@ Statuses are `PLANNED`, `IN_PROGRESS`, or `IMPLEMENTED`. Requirements move to im
 | FR-005 | MySQL connectivity              | IMPLEMENTED |
 | FR-006 | Schema introspection            | PLANNED |
 | FR-007 | Relationship discovery          | PLANNED |
-| FR-008 | Schema questions                | PLANNED |
-| FR-009 | Natural-language SQL generation | PLANNED |
+| FR-008 | Schema questions                | IMPLEMENTED |
+| FR-009 | Natural-language SQL generation previews | IMPLEMENTED — SELECT-only, never executed |
 | FR-010 | Read-only SQL execution         | PLANNED |
 | FR-011 | Query optimization              | PLANNED |
 | FR-012 | Documentation generation        | PLANNED |
